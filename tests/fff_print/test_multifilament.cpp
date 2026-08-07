@@ -175,6 +175,17 @@ static std::pair<std::string, std::optional<double>> split_lead(const std::strin
     return { entry.substr(0, tab), std::stod(tail.substr(tail.find(' ') + 1)) };
 }
 
+// The "time: <n>s" a preheat comment carries is round()'d from the same estimate the lead measures,
+// so it sits on a rounding boundary and flips (e.g. 30<->31) across platforms and build optimisation
+// levels; drop it from the command text so only the tolerant lead below carries that timing.
+static std::string strip_preheat_time(std::string command)
+{
+    const size_t pos = command.find(" time: ");
+    if (pos != std::string::npos)
+        command.erase(pos);
+    return command;
+}
+
 // Same command, and a lead time within half a second. The lead is an estimate summed over every
 // move before it, so it drifts slightly with unrelated changes to travel or tower geometry; half a
 // second is far below the tens of seconds a preheat leaving its backtrace position would shift it.
@@ -182,7 +193,7 @@ static bool trace_entries_match(const std::string& a, const std::string& b)
 {
     const auto x = split_lead(a);
     const auto y = split_lead(b);
-    if (x.first != y.first)
+    if (strip_preheat_time(x.first) != strip_preheat_time(y.first))
         return false;
     if (x.second.has_value() != y.second.has_value())
         return false;
