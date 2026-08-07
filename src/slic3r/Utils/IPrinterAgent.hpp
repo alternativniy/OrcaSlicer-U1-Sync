@@ -275,6 +275,24 @@ public:
      * Populates the MachineObject's DevFilaSystem with fetched filament data.
      */
     virtual bool fetch_filament_info(std::string dev_id) { return false; }
+
+    /**
+     * Refine the filament preset picked for one AMS slot by the generic filament_id-based
+     * resolution in PresetBundle::sync_ams_list().
+     *
+     * That generic resolution can only match a slot to a *root* preset (no "inherits") with a
+     * filament_id unique among such root presets, because filament_id alone is all that survives
+     * the handoff. An agent that computed a higher-confidence match during fetch_filament_info()
+     * (e.g. using vendor name, which does not survive that handoff) can report it here so the GUI
+     * can substitute it in after the generic resolution runs, without changing that resolution's
+     * behavior for any other agent.
+     *
+     * @param slot_index 0-based AMS slot index, matching the "slot_id" field of the slot's
+     *        DynamicPrintConfig in PresetBundle::filament_ams_list.
+     * @return Exact name of the filament preset to prefer for this slot, or "" if this agent has
+     *         no refinement to offer (the default for every agent that does not override this).
+     */
+    virtual std::string get_refined_filament_preset(int slot_index) const { return std::string(); }
 };
 
 } // namespace Slic3r

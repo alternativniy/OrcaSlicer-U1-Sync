@@ -19,18 +19,22 @@ T safe_at(const std::vector<T>& vec, int index, const T& fallback)
     return (index >= 0 && index < static_cast<int>(vec.size())) ? vec[index] : fallback;
 }
 
-std::string find_closest_color_preset_by_vendor_and_type(const PresetCollection& filaments,
-                                                         const std::string&      vendor_name,
-                                                         const std::string&      filament_type,
-                                                         const std::string&      color_rgba)
+// Finds the visible, compatible filament preset whose vendor and type match, breaking ties by
+// closest color. Unlike the generic AMS filament_id resolution in PresetBundle::sync_ams_list(),
+// this considers presets regardless of "inherits": filament_vendor/filament_type are always
+// fully resolved in Preset::config at load time (Preset.cpp copies the parent's config into the
+// child, then applies the child's own overrides on top), so a plain "Save as" profile that never
+// detached from its parent is just as valid a match candidate as a root preset.
+const Preset* find_closest_color_preset_by_vendor_and_type(const PresetCollection& filaments,
+                                                             const std::string&      vendor_name,
+                                                             const std::string&      filament_type,
+                                                             const std::string&      color_rgba)
 {
-    std::string best_match_id       = "";
-    int         best_color_distance = 0xffffffff;
+    const Preset* best_match          = nullptr;
+    int           best_color_distance = 0xffffffff;
 
     for (const auto& p : filaments.get_presets()) {
-        if (p.is_visible && p.is_compatible &&
-            // Filament profile must be detached from parent to be considered for matching
-            filaments.get_preset_base(p) == &p && p.config.opt_string("filament_vendor", 0u) == vendor_name &&
+        if (p.is_visible && p.is_compatible && p.config.opt_string("filament_vendor", 0u) == vendor_name &&
             p.config.opt_string("filament_type", 0u) == filament_type) {
             // The printer returns RGBA in the format RRGGBBAA, but profiles store color as #RRGGBB,
             // so we must remove # and ignore alpha channel for distance calculation
@@ -56,11 +60,26 @@ std::string find_closest_color_preset_by_vendor_and_type(const PresetCollection&
 
             if (distance < best_color_distance) {
                 best_color_distance = distance;
-                best_match_id       = p.filament_id;
+                best_match          = &p;
             }
         }
     }
-    return best_match_id;
+    return best_match;
+}
+
+// Mirrors the eligibility test PresetBundle::sync_ams_list()/get_ams_cobox_infos() apply when
+// resolving a filament_id back to a preset: only a *root* preset (no "inherits") is considered,
+// and among those sharing an id the pick is a name-sort tie-break, not necessarily this one. If
+// either holds, the generic resolution cannot be trusted to land back on `match`.
+bool generic_resolution_may_miss(const PresetCollection& filaments, const Preset& match)
+{
+    if (filaments.get_preset_base(match) != &match)
+        return true;
+    for (const auto& other : filaments.get_presets())
+        if (&other != &match && other.is_compatible && other.filament_id == match.filament_id &&
+            filaments.get_preset_base(other) == &other)
+            return true;
+    return false;
 }
 
 } // anonymous namespace
@@ -177,6 +196,7 @@ bool SnapmakerPrinterAgent::fetch_filament_info(std::string dev_id)
 
     std::vector<AmsTrayData> trays;
     trays.reserve(slot_count);
+    m_refined_filament_matches.clear();
 
     for (int i = 0; i < slot_count; ++i) {
         AmsTrayData tray;
@@ -192,14 +212,19 @@ bool SnapmakerPrinterAgent::fetch_filament_info(std::string dev_id)
             // Try to find a matching preset for this filament based on vendor, type and color.
             // If not found, default to traditional search by type only or generic type mapping.
             if (bundle) {
-                std::string vendor      = safe_at(filament_vendor, i, empty_str);
-                std::string filament_id = find_closest_color_preset_by_vendor_and_type(bundle->filaments, vendor, tray.tray_type,
-                                                                                       tray.tray_color);
+                std::string   vendor = safe_at(filament_vendor, i, empty_str);
+                const Preset* match = find_closest_color_preset_by_vendor_and_type(bundle->filaments, vendor, tray.tray_type,
+                                                                                    tray.tray_color);
 
-                if (!filament_id.empty()) {
-                    tray.tray_info_idx = filament_id;
+                if (match) {
+                    tray.tray_info_idx = match->filament_id;
                     BOOST_LOG_TRIVIAL(warning) << "Filament sync: Found manufacturer-specific profile for slot " << i << ": "
-                                               << filament_id;
+                                               << match->name;
+                    // The generic filament_id resolution downstream may not land back on `match`
+                    // (e.g. it's a "Save as" profile that never detached, or shares its id with a
+                    // sibling); get_refined_filament_preset() lets the GUI substitute it in by name.
+                    if (generic_resolution_may_miss(bundle->filaments, *match))
+                        m_refined_filament_matches[i] = match->name;
                 } else {
                     tray.tray_info_idx = bundle->filaments.filament_id_by_type(tray.tray_type);
                 }
@@ -223,6 +248,12 @@ bool SnapmakerPrinterAgent::fetch_filament_info(std::string dev_id)
 
     build_ams_payload(1, slot_count - 1, trays);
     return true;
+}
+
+std::string SnapmakerPrinterAgent::get_refined_filament_preset(int slot_index) const
+{
+    auto it = m_refined_filament_matches.find(slot_index);
+    return it != m_refined_filament_matches.end() ? it->second : std::string();
 }
 
 } // namespace Slic3r

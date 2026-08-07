@@ -3590,6 +3590,29 @@ void Sidebar::sync_ams_list(bool is_from_big_sync_btn)
     auto enable_append  = wxGetApp().app_config->get_bool("enable_append_color_by_sync_ams");
     auto sync_color_only = wxGetApp().app_config->get("sync_ams_filament_mode") == "1";
     auto n              = wxGetApp().preset_bundle->sync_ams_list(unknowns, !sync_result.direct_sync, sync_result.sync_maps, enable_append, merge_info, sync_color_only);
+    auto &filaments        = wxGetApp().preset_bundle->filaments;
+    auto &filament_presets = wxGetApp().preset_bundle->filament_presets;
+    // Let the active agent refine any slot it has a higher-confidence match for (e.g. a vendor
+    // match on a preset the generic filament_id resolution above couldn't land on reliably -- see
+    // IPrinterAgent::get_refined_filament_preset()). No-op for agents that don't implement this.
+    auto *network_agent = wxGetApp().getDeviceManager()->get_agent();
+    auto printer_agent  = network_agent ? network_agent->get_printer_agent() : nullptr;
+    if (printer_agent) {
+        size_t i = 0;
+        for (auto &entry : list) {
+            if (i >= filament_presets.size())
+                break;
+            int slot_index = std::stoi(entry.second.opt_string("slot_id", 0u));
+            std::string refined = printer_agent->get_refined_filament_preset(slot_index);
+            if (!refined.empty() && filaments.find_preset(refined)) {
+                filament_presets[i] = refined;
+                unknowns.erase(std::remove_if(unknowns.begin(), unknowns.end(),
+                                               [&entry](auto &uk) { return uk.first == &entry.second; }),
+                                unknowns.end());
+            }
+            ++i;
+        }
+    }
     wxString detail;
     for (auto & uk : unknowns) {
         auto tray_name     = uk.first->opt_string("tray_name", 0u);
@@ -3604,8 +3627,6 @@ void Sidebar::sync_ams_list(bool is_from_big_sync_btn)
         return;
     }
     // Replace unknown filament IDs with the resolved preset's filament_id
-    auto &filaments        = wxGetApp().preset_bundle->filaments;
-    auto &filament_presets = wxGetApp().preset_bundle->filament_presets;
     for (size_t i = 0; i < list2.size() && i < filament_presets.size(); ++i) {
         if (list2[i] == UNKNOWN_FILAMENT_ID) {
             const Preset *resolved = filaments.find_preset(filament_presets[i]);
