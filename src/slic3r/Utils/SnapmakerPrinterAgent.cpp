@@ -6,6 +6,9 @@
 #include "nlohmann/json.hpp"
 #include <boost/log/trivial.hpp>
 
+#include <algorithm>
+#include <cctype>
+
 namespace Slic3r {
 
 namespace {
@@ -19,23 +22,55 @@ T safe_at(const std::vector<T>& vec, int index, const T& fallback)
     return (index >= 0 && index < static_cast<int>(vec.size())) ? vec[index] : fallback;
 }
 
+// combine_filament_type() folds cosmetic finishes (SnapSpeed, Silk, Wood, Matte, Marble) into the
+// type string as "<base> <FINISH>" (e.g. "PLA HIGH SPEED"), but Orca/Snapmaker profiles never
+// store that in filament_type -- only composite materials like "PLA-CF"/"PLA-GF" get a real,
+// distinct filament_type. The finish is only ever spelled out in the preset *name*. Mirrors the
+// same "strip after first space" convention PresetCollection::first_visible_idx_by_type() already
+// applies for its own generic (non-vendor) fallback.
+bool filament_type_matches(const std::string& preset_type, const std::string& target_type)
+{
+    if (preset_type == target_type)
+        return true;
+    auto sep = target_type.find(' ');
+    return sep != std::string::npos && preset_type == target_type.substr(0, sep);
+}
+
+bool name_contains_ci(const std::string& name, const std::string& needle)
+{
+    if (needle.empty())
+        return false;
+    auto it = std::search(name.begin(), name.end(), needle.begin(), needle.end(), [](char a, char b) {
+        return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+    });
+    return it != name.end();
+}
+
 // Finds the visible, compatible filament preset whose vendor and type match, breaking ties by
 // closest color. Unlike the generic AMS filament_id resolution in PresetBundle::sync_ams_list(),
 // this considers presets regardless of "inherits": filament_vendor/filament_type are always
 // fully resolved in Preset::config at load time (Preset.cpp copies the parent's config into the
 // child, then applies the child's own overrides on top), so a plain "Save as" profile that never
 // detached from its parent is just as valid a match candidate as a root preset.
+//
+// name_hint, when non-empty (e.g. "SnapSpeed"), is a marketing finish name that isn't part of
+// filament_type; among candidates that otherwise tie, one whose name contains it is preferred
+// over one that doesn't, so e.g. a SnapSpeed-tagged spool doesn't get matched to a same-vendor
+// regular-finish preset purely because both share the plain "PLA" filament_type.
 const Preset* find_closest_color_preset_by_vendor_and_type(const PresetCollection& filaments,
                                                              const std::string&      vendor_name,
                                                              const std::string&      filament_type,
-                                                             const std::string&      color_rgba)
+                                                             const std::string&      color_rgba,
+                                                             const std::string&      name_hint)
 {
-    const Preset* best_match          = nullptr;
-    int           best_color_distance = 0xffffffff;
+    const Preset* best_match         = nullptr;
+    unsigned int  best_distance      = 0xffffffff;
+    const Preset* best_hint_match    = nullptr;
+    unsigned int  best_hint_distance = 0xffffffff;
 
     for (const auto& p : filaments.get_presets()) {
         if (p.is_visible && p.is_compatible && p.config.opt_string("filament_vendor", 0u) == vendor_name &&
-            p.config.opt_string("filament_type", 0u) == filament_type) {
+            filament_type_matches(p.config.opt_string("filament_type", 0u), filament_type)) {
             // The printer returns RGBA in the format RRGGBBAA, but profiles store color as #RRGGBB,
             // so we must remove # and ignore alpha channel for distance calculation
             unsigned int target_color_value = std::stoul(color_rgba.substr(0, color_rgba.length() - 2), nullptr, 16);
@@ -58,13 +93,39 @@ const Preset* find_closest_color_preset_by_vendor_and_type(const PresetCollectio
             int db = (((target_color_value >> 16) & 0xff) - ((p_color_value >> 16) & 0xff));
             unsigned int distance = dr * dr + dg * dg + db * db;
 
-            if (distance < best_color_distance) {
-                best_color_distance = distance;
-                best_match          = &p;
+            if (distance < best_distance) {
+                best_distance = distance;
+                best_match    = &p;
+            }
+            if (name_contains_ci(p.name, name_hint) && distance < best_hint_distance) {
+                best_hint_distance = distance;
+                best_hint_match    = &p;
             }
         }
     }
-    return best_match;
+    return best_hint_match ? best_hint_match : best_match;
+}
+
+// Marketing finish name for sub-types that combine_filament_type() folds into the type string but
+// that never appear in any preset's filament_type field (see filament_type_matches() above) --
+// only ever in the preset name, e.g. "Snapmaker PLA SnapSpeed @U1". CF/GF need no hint: those get
+// a real, distinct filament_type ("PLA-CF") that already disambiguates on its own.
+// `sub` must already be trimmed and upper-cased (see MoonrakerPrinterAgent::trim_and_upper()).
+std::string sub_type_name_hint(const std::string& sub)
+{
+    if (sub == "SNAPSPEED" || sub == "HS")
+        return "SnapSpeed";
+    if (sub == "SILK")
+        return "Silk";
+    if (sub == "WOOD")
+        return "Wood";
+    if (sub == "MATTE")
+        return "Matte";
+    if (sub == "MARBLE")
+        return "Marble";
+    if (sub == "HF")
+        return "HF";
+    return "";
 }
 
 // Mirrors the eligibility test PresetBundle::sync_ams_list()/get_ams_cobox_infos() apply when
@@ -212,9 +273,10 @@ bool SnapmakerPrinterAgent::fetch_filament_info(std::string dev_id)
             // Try to find a matching preset for this filament based on vendor, type and color.
             // If not found, default to traditional search by type only or generic type mapping.
             if (bundle) {
-                std::string   vendor = safe_at(filament_vendor, i, empty_str);
+                std::string   vendor    = safe_at(filament_vendor, i, empty_str);
+                std::string   name_hint = sub_type_name_hint(trim_and_upper(safe_at(filament_sub_type, i, empty_str)));
                 const Preset* match = find_closest_color_preset_by_vendor_and_type(bundle->filaments, vendor, tray.tray_type,
-                                                                                    tray.tray_color);
+                                                                                    tray.tray_color, name_hint);
 
                 if (match) {
                     tray.tray_info_idx = match->filament_id;
