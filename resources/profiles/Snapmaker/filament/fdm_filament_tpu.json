@@ -3,6 +3,9 @@
 	"name": "fdm_filament_tpu",
 	"inherits": "fdm_filament_common",
 	"from": "system",
+	"filament_retract_length_toolchange": [
+		"2"
+	],
 	"instantiation": "false",
 	"hot_plate_temp": [
 		"40"
@@ -41,7 +44,7 @@
 		"0"
 	],
 	"filament_retraction_length": [
-		"0.5"
+		"1.5"
 	],
 	"filament_z_hop": [
 		"0"

@@ -3,6 +3,9 @@
 	"name": "Flashforge Generic TPU",
 	"inherits": "fdm_filament_tpu",
 	"from": "system",
+	"filament_retract_length_toolchange": [
+		"2"
+	],
 	"setting_id": "zQEeIIKWSgsDqlpI",
 	"filament_id": "GFG99",
 	"instantiation": "true",
@@ -64,7 +67,7 @@
 		"1.24"
 	],
 	"filament_deretraction_speed": [
-		"nil"
+		"20"
 	],
 	"filament_diameter": [
 		"1.75"
@@ -100,7 +103,7 @@
 		"nil"
 	],
 	"filament_retraction_speed": [
-		"nil"
+		"20"
 	],
 	"filament_settings_id": [
 		"Flashforge TPU"

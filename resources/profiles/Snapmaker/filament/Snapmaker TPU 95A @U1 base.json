@@ -2,6 +2,9 @@
 	"type": "filament",
 	"name": "Snapmaker TPU 95A @U1 base",
 	"from": "system",
+	"filament_retract_length_toolchange": [
+		"2"
+	],
 	"filament_id": "297165629001",
 	"instantiation": "false",
 	"overhang_fan_threshold": [
@@ -14,7 +17,7 @@
 		"1"
 	],
 	"filament_deretraction_speed": [
-		"nil"
+		"20"
 	],
 	"filament_diameter": [
 		"1.75"
@@ -41,7 +44,7 @@
 		"nil"
 	],
 	"filament_retraction_speed": [
-		"nil"
+		"20"
 	],
 	"filament_settings_id": [
 		""
@@ -50,7 +53,7 @@
 		"0"
 	],
 	"filament_vendor": [
-		"Generic"
+		"Snapmaker"
 	],
 	"filament_wipe": [
 		"nil"
@@ -110,7 +113,7 @@
 		"20"
 	],
 	"filament_retraction_length": [
-		"0.4"
+		"1.5"
 	],
 	"nozzle_temperature_initial_layer": [
 		"240"

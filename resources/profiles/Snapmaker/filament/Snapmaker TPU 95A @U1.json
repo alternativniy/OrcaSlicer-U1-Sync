@@ -3,6 +3,9 @@
 	"name": "Snapmaker TPU 95A @U1",
 	"inherits": "Snapmaker TPU 95A @U1 base",
 	"from": "system",
+	"filament_retract_length_toolchange": [
+		"2"
+	],
 	"setting_id": "XdvEzjOGtQKamDRC",
 	"instantiation": "true",
 	"compatible_printers": [
@@ -195,7 +198,7 @@
 		"100"
 	],
 	"filament_vendor": [
-		"Generic"
+		"Snapmaker"
 	],
 	"filament_wipe": [
 		"nil"

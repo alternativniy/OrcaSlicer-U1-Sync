@@ -3,6 +3,9 @@
 	"name": "Bambu TPU 95A HF @base",
 	"inherits": "fdm_filament_tpu",
 	"from": "system",
+	"filament_retract_length_toolchange": [
+		"4"
+	],
 	"filament_id": "GFU00",
 	"instantiation": "false",
 	"description": "This filament is too soft and not compatible with the AMS. Printing it is of many requirements, and to get better printing quality, please refer to this wiki: TPU printing guide.",

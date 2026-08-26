@@ -3,6 +3,9 @@
 	"name": "COEX TPE 60D @base",
 	"inherits": "fdm_filament_tpu",
 	"from": "system",
+	"filament_retract_length_toolchange": [
+		"2"
+	],
 	"filament_id": "CX60DB19",
 	"instantiation": "false",
 	"filament_vendor": [
