@@ -2,6 +2,15 @@
 	"type": "filament",
 	"name": "fdm_filament_tpu",
 	"from": "system",
+	"filament_retraction_speed": [
+		"20"
+	],
+	"filament_deretraction_speed": [
+		"20"
+	],
+	"filament_retract_length_toolchange": [
+		"2"
+	],
 	"instantiation": "false",
 	"inherits": "fdm_filament_common",
 	"cool_plate_temp": [

@@ -3,6 +3,15 @@
 	"name": "fdm_filament_tpu",
 	"inherits": "fdm_filament_common",
 	"from": "system",
+	"filament_retraction_speed": [
+		"20"
+	],
+	"filament_deretraction_speed": [
+		"20"
+	],
+	"filament_retract_length_toolchange": [
+		"2"
+	],
 	"filament_id": "GFU99",
 	"instantiation": "false",
 	"cool_plate_temp": [

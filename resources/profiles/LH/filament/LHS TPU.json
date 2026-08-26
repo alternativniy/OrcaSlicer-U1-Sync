@@ -4,6 +4,9 @@
 	"filament_id": "LHF_ptpu_pl",
 	"setting_id": "ILgpZYIqYGH6mqdI",
 	"from": "system",
+	"filament_retract_length_toolchange": [
+		"2"
+	],
 	"instantiation": "true",
 	"inherits": "fdm_filament_tpu",
 	"compatible_printers": [

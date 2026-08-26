@@ -3,6 +3,9 @@
 	"name": "COEX TPU 60A @base",
 	"inherits": "fdm_filament_tpu",
 	"from": "system",
+	"filament_retract_length_toolchange": [
+		"2"
+	],
 	"filament_id": "CX60AB17",
 	"instantiation": "false",
 	"filament_vendor": [
