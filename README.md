@@ -4,13 +4,20 @@
   <img alt="OrcaSlicer logo" src="resources/images/OrcaSlicer.png" width="15%" height="15%">
 </picture>
 
-<a href="https://trendshift.io/repositories/15552" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15552" alt="OrcaSlicer%2FOrcaSlicer | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-
-[![GitHub Repo stars](https://img.shields.io/github/stars/OrcaSlicer/OrcaSlicer)](https://github.com/OrcaSlicer/OrcaSlicer/stargazers) [![Build all](https://github.com/OrcaSlicer/OrcaSlicer/actions/workflows/build_all.yml/badge.svg?branch=main)](https://github.com/OrcaSlicer/OrcaSlicer/actions/workflows/build_all.yml)
-
 OrcaSlicer: an open source Next-Gen Slicing Software for Precision 3D Prints.  
 Optimize your prints with ultra-fast slicing, intelligent support generation, and seamless printer compatibility—engineered for perfection.
 <h3>
+
+# About this fork
+
+This is [OrcaSlicer-U1-Sync](https://github.com/alternativniy/OrcaSlicer-U1-Sync), a fork kept in sync with upstream [OrcaSlicer/OrcaSlicer](https://github.com/OrcaSlicer/OrcaSlicer), focused on Snapmaker U1 support plus a few fixes not (yet) upstreamed:
+
+- **"No sparse layers" toolchange collision fix.** With `wipe_tower_no_sparse_layers` enabled, the wipe tower can sit well below the tallest printed part between toolchanges. Previously the toolhead ran `change_filament_gcode` (and the final purge) at that low Z, so the tool-change travel — or, on toolchangers, the physical head swap — could plow straight through already-printed parts. Z is now restored to the real layer height before that gcode runs and correctly lowered back to the tower afterward, for both the default and legacy wipe tower generators.
+- **Wipe tower / tall-object collision detection.** `Print::validate()` now flags (as a hard error, with a visible keep-out zone in the 3D view, matching sequential-print collision UX) objects that sit within toolhead clearance of the wipe tower, or that share its gantry row and exceed the rod clearance height — even without direct XY overlap, since the gantry beam sweeps that whole row on typical Cartesian/CoreXY kinematics. Reuses the existing `extruder_clearance_radius` / `extruder_clearance_height_to_rod` settings; no new printer settings needed.
+- **Snapmaker filament profile sync.** Synchronizes user filament profiles with the printer, with fixes for original-manufacturer filament sync.
+- **Toolchange retraction controls exposed.** "Retraction Length (Toolchange)" and "Extra Length on Restart (Toolchange)" are now available per-filament in the GUI.
+- **TPU filament profile tuning** across several vendor profiles.
+
 
 # Official links and community
 
