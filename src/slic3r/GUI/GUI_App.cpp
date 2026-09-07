@@ -5663,7 +5663,10 @@ void GUI_App::check_new_version_sf(bool show_tips, int by_user)
             std::stringstream           json_stream(body);
             boost::property_tree::read_json(json_stream, root);
 
-            std::regex matcher("[0-9]+\\.[0-9]+(\\.[0-9]+)*(-[A-Za-z0-9]+)?(\\+[A-Za-z0-9]+)?");
+            // Orca(U1): support dot-separated pre-release/build identifiers that themselves
+            // contain hyphens (e.g. "2.4.2-u1-1.0.0"), so the fork's own semver suffix
+            // compares correctly instead of being truncated at the first embedded hyphen.
+            std::regex matcher("[0-9]+\\.[0-9]+(\\.[0-9]+)*(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?");
             Semver    current_version = get_version(SoftFever_VERSION, matcher);
             Semver    best_pre(0, 0, 0);
             Semver    best_release(0, 0, 0);
