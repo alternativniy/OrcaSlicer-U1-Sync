@@ -565,7 +565,8 @@ public:
                      float line_width,
                      GCodeFlavor flavor,
                      const std::vector<WipeTower2::FilamentParameters>& filament_parameters,
-                     bool  enable_arc_fitting)
+                     bool  enable_arc_fitting,
+                     const std::string& printer_model = std::string())
         :
 		m_current_pos(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()),
 		m_current_z(0.f),
@@ -574,7 +575,7 @@ public:
 		m_extrusion_flow(0.f),
 		m_preview_suppressed(false),
 		m_elapsed_time(0.f),
-        m_gcode_flavor(flavor), m_filpar(filament_parameters)
+        m_gcode_flavor(flavor), m_filpar(filament_parameters), m_printer_model(printer_model)
         //m_enable_arc_fitting(enable_arc_fitting)
     {
             // ORCA: This class is only used by non BBL printers, so set the parameter appropriately.
@@ -896,7 +897,8 @@ public:
 	WipeTowerWriter2& speed_override_backup()
     {
         // This is only supported by Prusa at this point (https://github.com/prusa3d/PrusaSlicer/issues/3114)
-        if (m_gcode_flavor == gcfMarlinLegacy || m_gcode_flavor == gcfMarlinFirmware)
+        // Orca: Snapmaker U1 firmware supports M220 B/R too, even on the klipper gcode flavor.
+        if (m_gcode_flavor == gcfMarlinLegacy || m_gcode_flavor == gcfMarlinFirmware || is_snapmaker_u1())
             m_gcode += "M220 B\n";
 		return *this;
     }
@@ -904,7 +906,7 @@ public:
 	// Let the firmware restore the active speed override value.
 	WipeTowerWriter2& speed_override_restore()
 	{
-        if (m_gcode_flavor == gcfMarlinLegacy || m_gcode_flavor == gcfMarlinFirmware)
+        if (m_gcode_flavor == gcfMarlinLegacy || m_gcode_flavor == gcfMarlinFirmware || is_snapmaker_u1())
             m_gcode += "M220 R\n";
 		return *this;
     }
@@ -1170,6 +1172,9 @@ private:
     GCodeFlavor   m_gcode_flavor;
     bool          m_enable_arc_fitting = false;
     const std::vector<WipeTower2::FilamentParameters>& m_filpar;
+    std::string   m_printer_model;
+
+    bool is_snapmaker_u1() const { return boost::icontains(m_printer_model, "Snapmaker") && boost::icontains(m_printer_model, "U1"); }
 
 	std::string   set_format_X(float x)
     {
@@ -1262,6 +1267,7 @@ WipeTower2::WipeTower2(const PrintConfig& config, const PrintRegionConfig& defau
     m_bridging(float(config.wipe_tower_bridging)),
     m_no_sparse_layers(config.wipe_tower_no_sparse_layers),
     m_gcode_flavor(config.gcode_flavor),
+    m_printer_model(config.printer_model.value),
     m_travel_speed(config.travel_speed),
     m_infill_speed(default_region_config.sparse_infill_speed),
     m_perimeter_speed(default_region_config.inner_wall_speed),
@@ -1447,7 +1453,7 @@ std::vector<WipeTower::ToolChangeResult> WipeTower2::prime(
     for (size_t idx_tool = 0; idx_tool < tools.size(); ++ idx_tool) {
         size_t old_tool = m_current_tool;
 
-        WipeTowerWriter2 writer(m_layer_height, m_perimeter_width, m_gcode_flavor, m_filpar, m_enable_arc_fitting);
+        WipeTowerWriter2 writer(m_layer_height, m_perimeter_width, m_gcode_flavor, m_filpar, m_enable_arc_fitting, m_printer_model);
         writer.set_extrusion_flow(m_extrusion_flow)
               .set_z(m_z_pos)
               .set_initial_tool(m_current_tool);
@@ -1549,7 +1555,7 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
         (tool != (unsigned int)(-1) ? wipe_area+m_depth_traversed-0.5f*m_perimeter_width
                                     : m_wipe_tower_depth-m_perimeter_width));
 
-	WipeTowerWriter2 writer(m_layer_height, m_perimeter_width, m_gcode_flavor, m_filpar, m_enable_arc_fitting);
+	WipeTowerWriter2 writer(m_layer_height, m_perimeter_width, m_gcode_flavor, m_filpar, m_enable_arc_fitting, m_printer_model);
 	writer.set_extrusion_flow(m_extrusion_flow)
 		.set_z(m_z_pos)
 		.set_initial_tool(m_current_tool)
@@ -2006,7 +2012,7 @@ WipeTower::ToolChangeResult WipeTower2::finish_layer()
 
     size_t old_tool = m_current_tool;
 
-	WipeTowerWriter2 writer(m_layer_height, m_perimeter_width, m_gcode_flavor, m_filpar, m_enable_arc_fitting);
+	WipeTowerWriter2 writer(m_layer_height, m_perimeter_width, m_gcode_flavor, m_filpar, m_enable_arc_fitting, m_printer_model);
 	writer.set_extrusion_flow(m_extrusion_flow)
 		.set_z(m_z_pos)
 		.set_initial_tool(m_current_tool)
