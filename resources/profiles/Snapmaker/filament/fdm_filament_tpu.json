@@ -7,6 +7,9 @@
 		"2"
 	],
 	"instantiation": "false",
+	"filament_vendor": [
+		"Snapmaker"
+	],
 	"hot_plate_temp": [
 		"40"
 	],
