@@ -35,6 +35,8 @@ there is "live"; anything only on a topic branch below is **not yet in `release/
 | `upstream/15483-cap-bed-temps` | `release/v2.4-u1` | Yes | Change #9 (cherry-picked from PR #15483) |
 | `upstream/15349-u1-filename` | `release/v2.4-u1` | Yes | Change #10 (cherry-picked from PR #15349) |
 | `upstream/15482-filament-vendor` | `release/v2.4-u1` | Yes | Change #11 (cherry-picked from PR #15482) |
+| `upstream/14987-15544-sequential-collision` | `release/v2.4-u1` | Yes | Change #12 (cherry-picked from PR #14987+#15544) |
+| `upstream/14400-nozzle-picker` | `release/v2.4-u1` | Yes | Change #13 (cherry-picked from PR #14400) |
 
 The `-main` branches exist because the no-sparse-layers work started life on `release/v2.4` and had
 to be rebased onto `main` to open upstream PRs (drifted too far to apply cleanly otherwise); they're
@@ -275,6 +277,68 @@ resolved config (vendor already propagated to the whole family via `fdm_filament
   from our actual current, not their `.10`).
 - Same redundancy note as #9/#10: drop once #15482 lands upstream and we rebase past it.
 
+### 12. Sequential-print collision check: real geometry order + rod-only height
+
+`Print::sequential_print_clearance_valid()` (`print_sequence == "by object"`) sorted objects by
+their raw position in the 3mf's object list and checked clearance against that order — a file that
+sliced and printed cleanly on a Bambu printer could throw a false "too tall, collisions will be
+caused" on Snapmaker U1, purely because of 3mf authoring order, not real geometry. Two-part fix:
+- **Object order** (first commit): replaced the list-order sort with a topological sort over the
+  "must print before" constraints implied by `extruder_clearance_height_to_rod` /
+  `extruder_clearance_height_to_lid`. Uses a valid print order if one exists; falls back to the
+  original list order (same error as before) only for a genuine, unavoidable collision.
+- **Rod-only height** (second commit): the rod sits `extruder_clearance_height_to_rod` above the
+  nozzle and spans the full X axis, so only the part of an already-printed instance reaching above
+  that height can be hit — not its whole footprint. Computes per-instance Y-extent of geometry above
+  the rod (conservative: any triangle with a vertex above the rod contributes all three vertices;
+  modifiers/blockers/negative volumes skipped) and uses that for both the ordering constraints and
+  the final vertical check, instead of the full footprint.
+- `src/libslic3r/Print.cpp` only, both commits.
+- **Source:** cherry-picked verbatim (both commits, in order) from upstream PR
+  [OrcaSlicer/OrcaSlicer#15544](https://github.com/OrcaSlicer/OrcaSlicer/pull/15544) (stacked on
+  [#14987](https://github.com/OrcaSlicer/OrcaSlicer/pull/14987), which is the first commit; both
+  open, unmerged as of writing), commits `635608bc61` and `7464edcd13`, author Kuzuri — who measured
+  real U1 nozzle-to-rod clearance by hand and also has a mirror PR on `Snapmaker/OrcaSlicer#630`.
+- Branch: `upstream/14987-15544-sequential-collision` (from `release/v2.4-u1`), merged back in. No
+  conflicts — this is `Print::sequential_print_clearance_valid()`, a **different** function from our
+  own `layered_print_cleareance_valid()` (change #1's gantry-row detection, the layer-print/wipe-tower
+  path); confirmed no code overlap, only a comment in our code references the other function by name.
+- Verified: `fff_print_tests` 39/39 both before and after merging into `release/v2.4-u1`.
+- Redundancy note: drop this local pair of commits once #14987/#15544 land upstream and we rebase
+  past them — don't double-apply.
+
+### 13. Per-toolhead nozzle-size picker + Mixed Nozzle Sizes conversion
+
+Sidebar picker (one dropdown per toolhead + Apply) for multi-toolhead printers like U1. Uniform
+selection loads the matching `Snapmaker U1 (x nozzle)` profile (the easy nozzle switch snorca has
+and mainline lacked); mixed selection sets each toolhead's diameter, adjusts per-toolhead min/max
+layer height, and offers (Yes/No) to auto-convert the process profile's line-width fields to
+percentages of nozzle diameter — the manual step from the
+[Mixed Nozzle Sizes wiki guide](https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes), done
+for you.
+- New: `src/libslic3r/NozzleAgnostic.{hpp,cpp}` (GUI-free conversion math + `ratio_over` scope rule),
+  `src/slic3r/GUI/NozzlePickerPanel.{hpp,cpp}` (the picker widget),
+  `tests/libslic3r/test_nozzle_agnostic.cpp` (10 Catch2 cases).
+- Modified: `src/slic3r/GUI/ConfigManipulation.{cpp,hpp}` (`check_nozzle_agnostic()` confirm-and-apply
+  hook), `src/slic3r/GUI/Plater.{cpp,hpp}` (picker wiring, uniform/mixed Apply, visibility gate),
+  `src/slic3r/GUI/Tab.hpp` (offers the conversion from the Print tab), both `CMakeLists.txt`s.
+- **Source:** cherry-picked verbatim from upstream PR
+  [OrcaSlicer/OrcaSlicer#14400](https://github.com/OrcaSlicer/OrcaSlicer/pull/14400) (open, unmerged
+  as of writing), commit `0bd92b7628`, author ni4223 (the same U1 user active testing #15145, see
+  watchlist below).
+- Branch: `upstream/14400-nozzle-picker` (from `release/v2.4-u1`), merged back in.
+- **Conflict note:** `ConfigManipulation.{cpp,hpp}` and `tests/libslic3r/CMakeLists.txt` conflicted —
+  in every case it was two independent, unrelated additions landing on adjacent lines (our
+  pre-existing `check_chamber_minimal_temperature()` next to their new `check_nozzle_agnostic()`; our
+  `test_preset_setting_id.cpp` next to their new `test_nozzle_agnostic.cpp`). Kept both in each case,
+  nothing was actually competing for the same code. `Plater.cpp` merged with no conflict at all.
+- Verified: all 10 `nozzle_agnostic` unit tests pass; `libslic3r_tests` 125/126 (the 1 failure is the
+  pre-existing, unrelated `Placeholder parser coFloatsOrPercents vector access` upstream bug — see
+  git history, confirmed via `git merge-base --is-ancestor` to predate any of our own work); manually
+  compiled `NozzleAgnostic.cpp`, `NozzlePickerPanel.cpp`, `ConfigManipulation.cpp`, and `Plater.cpp`
+  standalone (only pre-existing, unrelated warnings). Did not run the actual GUI.
+- Redundancy note: drop once #14400 lands upstream and we rebase past it.
+
 ## Not fork changes (verified, left alone)
 
 A few things looked like ours at first glance but turned out to be upstream's own, and were
@@ -294,25 +358,9 @@ tree yet — this is a "check back later" list, not a changelog. Re-check status
 anything merged upstream should be dropped from here and, if we'd carried a local equivalent,
 reconciled against it.
 
-**Already taken** (see changes #9, #10, #11 above) — #15483, #15349, #15482. Removed from this
-watchlist; will need reconciling (drop our local commit, don't double-apply) once each actually
-merges upstream and we rebase past it.
-
-**Directly relevant, worth taking independent of merge status** (small, clean, low conflict risk):
-- [#14987](https://github.com/OrcaSlicer/OrcaSlicer/pull/14987) +
-  [#15544](https://github.com/OrcaSlicer/OrcaSlicer/pull/15544) (stacked) — sequential-print
-  (`print_sequence == "by object"`) collision check fix: object order was by 3mf list index, not
-  real geometry (false "too tall" errors); #15544 also narrows the rod-collision check to material
-  actually above `height_to_rod`, not the whole object footprint. `CLEAN`/`MERGEABLE` as of last
-  check, author measured real U1 clearance by hand. Touches `Print::sequential_print_clearance_valid()`
-  — a **different** function from our own `layered_print_cleareance_valid()` (change #1 above,
-  layer-print/wipe-tower path); no expected overlap, but same neighborhood of the file, diff
-  carefully. Author also has a mirror PR open directly on `Snapmaker/OrcaSlicer#630`.
-- [#14400](https://github.com/OrcaSlicer/OrcaSlicer/pull/14400) — per-toolhead nozzle-size picker +
-  "Mixed Nozzle Sizes" auto-conversion for multi-toolhead printers. Mostly new files
-  (`NozzleAgnostic.{hpp,cpp}`, `NozzlePickerPanel.{hpp,cpp}`), has its own unit tests. `CONFLICTING`
-  with current main but stale (no maintainer review in ~2.5 months) rather than contested — likely
-  cherry-picks cleanly onto our tree even before it lands upstream.
+**Already taken** (see changes #9-#13 above) — #15483, #15349, #15482, #14987, #15544, #14400.
+Removed from this watchlist; will need reconciling (drop our local commit, don't double-apply) once
+each actually merges upstream and we rebase past it.
 
 **Large/active, do not take yet — architecture still moving:**
 - [#15145](https://github.com/OrcaSlicer/OrcaSlicer/pull/15145) — U1 filament inventory management,
