@@ -244,6 +244,7 @@ private:
     bool            m_set_extruder_trimpot      = false;
     bool            m_adhesion                  = true;
     GCodeFlavor     m_gcode_flavor;
+    std::string     m_printer_model;
 
     // Bed properties
     enum {
