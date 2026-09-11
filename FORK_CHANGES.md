@@ -31,7 +31,10 @@ there is "live"; anything only on a topic branch below is **not yet in `release/
 | `feature/no-sparse-layers-protection-main` | `main` | No (upstream PR copy, see watchlist) | Change #1, detection half, rebased onto `main` |
 | `fix/snapmaker-u1-sync` | `main` | Yes (same commits) | Change #2 |
 | `feature/retraction-toolchange` | `main` | Yes (same commits) | Changes #3, #4 |
-| `feature/snaporca-migrate-features` | `main` | **No** | Change #8 (M220 B/R) — only branch that has it right now |
+| `feature/snaporca-migrate-features` | `main` | Yes | Change #8 (M220 B/R) |
+| `upstream/15483-cap-bed-temps` | `release/v2.4-u1` | Yes | Change #9 (cherry-picked from PR #15483) |
+| `upstream/15349-u1-filename` | `release/v2.4-u1` | Yes | Change #10 (cherry-picked from PR #15349) |
+| `upstream/15482-filament-vendor` | `release/v2.4-u1` | Yes | Change #11 (cherry-picked from PR #15482) |
 
 The `-main` branches exist because the no-sparse-layers work started life on `release/v2.4` and had
 to be rebased onto `main` to open upstream PRs (drifted too far to apply cleanly otherwise); they're
@@ -39,8 +42,12 @@ what's actually open against `OrcaSlicer/OrcaSlicer`, see the watchlist. `releas
 own copies of the same fix/detection commits, applied directly to the old base — that's why the
 `-main` variants show "No" here despite the change being live on `release/v2.4-u1`.
 
-**Change #8 is the one thing in this file not yet on `release/v2.4-u1`.** Cherry-pick
-`ce17f6a78a` from `feature/snaporca-migrate-features` before the next rebase, or it'll get lost.
+The `upstream/<pr-number>-*` branches are a different pattern from everything else in this table:
+they don't lead to an upstream PR of ours — the upstream PR already exists (someone else's), we're
+just pulling their already-open work into our tree early, before it merges upstream. Each one was
+branched from `release/v2.4-u1` itself (not `main`), had the PR's real commit(s) cherry-picked onto
+it (fetched via `git fetch <url> pull/<n>/head:pr-<n>`, not `gh pr diff | git apply`, to keep
+authorship), then merged straight back. See the watchlist for the ones not yet done this way.
 
 ## Changes
 
@@ -199,7 +206,6 @@ So this fork doesn't compare its version against, or offer updates from, upstrea
 
 ### 8. Snapmaker U1 speed-override (M220 B/R) restored after wipe tower purge
 
-**Not yet merged into `release/v2.4-u1` — only exists on `feature/snaporca-migrate-features`.**
 `WipeTowerWriter2::speed_override_backup()`/`speed_override_restore()` (`M220 B`/`M220 R`) only fired
 for `gcfMarlinLegacy`/`gcfMarlinFirmware`. U1 runs klipper flavor, so the wipe tower's forced
 `M220 S100` override before purging was never restored afterward — any user-set feedrate override got
@@ -217,6 +223,57 @@ silently and permanently reset to 100% at the very first toolchange, with no way
   repo entirely (`github.com/Snapmaker/OrcaSlicer`). Their code has no per-file license header
   beyond the project's own AGPLv3, so this is a same-license port, not a foreign-license concern —
   but if re-verifying, re-diff against whatever their current tag is, not v2.3.5 specifically.
+
+### 9. Snapmaker U1 — cap ABS/ASA/PPS bed temps at 100 °C
+
+U1's heated bed tops out at 100 °C; several filament bases requested 105-110 °C, causing print
+errors unless the user modified printer firmware config.
+- Affected: `Snapmaker ABS @U1 base`, `Snapmaker ASA @U1 base`,
+  `Fiberon ASA-CF08 @Snapmaker U1 base`, `Fiberon PPS-GF20 @Snapmaker U1 base`.
+- **Source:** cherry-picked verbatim from upstream PR
+  [OrcaSlicer/OrcaSlicer#15483](https://github.com/OrcaSlicer/OrcaSlicer/pull/15483) (open, unmerged
+  as of writing), commit `aab5edb48c`, author Owen Sessiecq — authorship preserved via
+  `git fetch .../pull/15483/head` + cherry-pick, not a patch-apply.
+- Branch: `upstream/15483-cap-bed-temps` (from `release/v2.4-u1`), merged back in.
+- **Conflict note:** the PR bumps `resources/profiles/Snapmaker.json`'s `version` field to
+  `02.04.00.10`, which assumed upstream PRs between our base and theirs that we haven't taken. We
+  bumped from our actual current `02.04.00.07` to `02.04.00.08` instead — took their bump intent
+  (increment on any bundle change) without inheriting a number from history we don't have. **If a
+  future upstream PR touching `Snapmaker.json` gets cherry-picked and also claims `.10` or similar,
+  don't blindly take their number — check our actual current version first and increment from that.**
+- Once #15483 merges upstream and we later rebase onto a newer base that includes it, this local
+  commit becomes redundant — drop it, don't double-apply.
+
+### 10. Snapmaker U1 — filename respects filament selection
+
+Filename format was pulling filament `[0]` regardless of which filament/extruder was actually
+selected on multi-extruder configs.
+- `resources/profiles/Snapmaker/process/fdm_process_U1_common.json`.
+- **Source:** cherry-picked verbatim from upstream PR
+  [OrcaSlicer/OrcaSlicer#15349](https://github.com/OrcaSlicer/OrcaSlicer/pull/15349) (open, unmerged
+  as of writing), commit `3a1a8a6f2a`, author Wegerich.
+- Branch: `upstream/15349-u1-filename` (from `release/v2.4-u1`), merged back in. No conflicts.
+- Same redundancy note as #9: drop once #15349 lands upstream and we rebase past it.
+
+### 11. Snapmaker — declare `filament_vendor` on per-type filament bases
+
+The Add/Remove Filaments dialog resolves a preset's vendor+type by walking its `inherits` chain and
+stopping at the first level with both known. Snapmaker's per-type bases (`fdm_filament_abs.json`,
+`_asa`, `_breakaway`, `_pa`, `_pet`, `_petg`, `_pla`, `_pva`, `_tpu`) declared type but not vendor,
+so the walk fell through to `fdm_filament_common` (no type) and failed — hiding 127 of 199
+instantiable Snapmaker filament presets (every ABS/ASA/PETG/PLA entry for the U1) from that dialog.
+Declaring `filament_vendor` on the nine per-type bases fixes the walk without changing any preset's
+resolved config (vendor already propagated to the whole family via `fdm_filament_common` regardless).
+- **Source:** cherry-picked verbatim from upstream PR
+  [OrcaSlicer/OrcaSlicer#15482](https://github.com/OrcaSlicer/OrcaSlicer/pull/15482) (open, unmerged
+  as of writing), commit `696d5d95f9`, author Owen Sessiecq.
+- Branch: `upstream/15482-filament-vendor` (from `release/v2.4-u1`), merged back in.
+- **Conflict note:** touches `fdm_filament_tpu.json`, the same file our own change #4 (TPU tuning)
+  modifies. Merged cleanly (different keys — their `filament_vendor` add, our
+  `filament_retract_length_toolchange`/speed tuning — don't overlap), verified both survived in the
+  merged file. Same `Snapmaker.json` version-number situation as #9: took `02.04.00.09` (increment
+  from our actual current, not their `.10`).
+- Same redundancy note as #9/#10: drop once #15482 lands upstream and we rebase past it.
 
 ## Not fork changes (verified, left alone)
 
@@ -237,13 +294,11 @@ tree yet — this is a "check back later" list, not a changelog. Re-check status
 anything merged upstream should be dropped from here and, if we'd carried a local equivalent,
 reconciled against it.
 
+**Already taken** (see changes #9, #10, #11 above) — #15483, #15349, #15482. Removed from this
+watchlist; will need reconciling (drop our local commit, don't double-apply) once each actually
+merges upstream and we rebase past it.
+
 **Directly relevant, worth taking independent of merge status** (small, clean, low conflict risk):
-- [#15483](https://github.com/OrcaSlicer/OrcaSlicer/pull/15483) — cap ABS/ASA/PPS bed temps at 100°C
-  for U1. Simple profile fix.
-- [#15349](https://github.com/OrcaSlicer/OrcaSlicer/pull/15349) — U1 exported filename should respect
-  filament selection. Simple bug-fix.
-- [#15482](https://github.com/OrcaSlicer/OrcaSlicer/pull/15482) — declare `filament_vendor` on
-  Snapmaker per-type filament bases. Simple profile fix.
 - [#14987](https://github.com/OrcaSlicer/OrcaSlicer/pull/14987) +
   [#15544](https://github.com/OrcaSlicer/OrcaSlicer/pull/15544) (stacked) — sequential-print
   (`print_sequence == "by object"`) collision check fix: object order was by 3mf list index, not
