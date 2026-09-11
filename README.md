@@ -10,13 +10,27 @@ Optimize your prints with ultra-fast slicing, intelligent support generation, an
 
 # About this fork
 
-This is [OrcaSlicer-U1-Sync](https://github.com/alternativniy/OrcaSlicer-U1-Sync), a fork kept in sync with upstream [OrcaSlicer/OrcaSlicer](https://github.com/OrcaSlicer/OrcaSlicer), focused on Snapmaker U1 support plus a few fixes not (yet) upstreamed:
+This is [OrcaSlicer-U1-Sync](https://github.com/alternativniy/OrcaSlicer-U1-Sync), a fork kept in sync with upstream [OrcaSlicer/OrcaSlicer](https://github.com/OrcaSlicer/OrcaSlicer), focused on Snapmaker U1 support plus fixes not (yet) upstreamed, and open upstream PRs pulled in early. See [`FORK_CHANGES.md`](FORK_CHANGES.md) for the full maintenance log (every change mapped to its source, branch, and conflict notes) — this section is the short version.
+
+### Our own fixes and features
 
 - **"No sparse layers" toolchange collision fix.** With `wipe_tower_no_sparse_layers` enabled, the wipe tower can sit well below the tallest printed part between toolchanges. Previously the toolhead ran `change_filament_gcode` (and the final purge) at that low Z, so the tool-change travel — or, on toolchangers, the physical head swap — could plow straight through already-printed parts. Z is now restored to the real layer height before that gcode runs and correctly lowered back to the tower afterward, for both the default and legacy wipe tower generators.
 - **Wipe tower / tall-object collision detection.** `Print::validate()` now flags (as a hard error, with a visible keep-out zone in the 3D view, matching sequential-print collision UX) objects that sit within toolhead clearance of the wipe tower, or that share its gantry row and exceed the rod clearance height — even without direct XY overlap, since the gantry beam sweeps that whole row on typical Cartesian/CoreXY kinematics. Reuses the existing `extruder_clearance_radius` / `extruder_clearance_height_to_rod` settings; no new printer settings needed.
+- **Snapmaker U1 speed-override fix.** `M220 B`/`M220 R` (save/restore the active feedrate override around the wipe tower's forced 100%) now also fires on U1's klipper flavor, not just Marlin — without it, any user-set feedrate override was silently and permanently reset to 100% at the first toolchange.
 - **Snapmaker filament profile sync.** Synchronizes user filament profiles with the printer, with fixes for original-manufacturer filament sync.
 - **Toolchange retraction controls exposed.** "Retraction Length (Toolchange)" and "Extra Length on Restart (Toolchange)" are now available per-filament in the GUI.
 - **TPU filament profile tuning** across several vendor profiles.
+- **Independent fork versioning.** This build reports its own version (`2.4.2-u1-1.1.0`: upstream base + our own semver) and checks for updates against [this repo's releases](https://github.com/alternativniy/OrcaSlicer-U1-Sync/releases) instead of upstream's.
+
+### Cherry-picked from open upstream PRs
+
+Small, self-contained upstream PRs pulled in ahead of their own merge, since they fix real bugs and don't touch our own changes. Each will be dropped and reconciled once the real PR lands upstream — don't expect these credits to stay forever.
+
+- [OrcaSlicer/OrcaSlicer#15483](https://github.com/OrcaSlicer/OrcaSlicer/pull/15483) — cap ABS/ASA/PPS bed temperatures at 100 °C for the U1 (by [@osessiecq](https://github.com/osessiecq)).
+- [OrcaSlicer/OrcaSlicer#15349](https://github.com/OrcaSlicer/OrcaSlicer/pull/15349) — exported filename now respects the actual filament/extruder selection on multi-extruder configs (by [@Wegerich](https://github.com/Wegerich)).
+- [OrcaSlicer/OrcaSlicer#15482](https://github.com/OrcaSlicer/OrcaSlicer/pull/15482) — declares `filament_vendor` on Snapmaker's per-type filament bases, unhiding 127 of 199 Snapmaker filament presets from the Add/Remove Filaments dialog (by [@osessiecq](https://github.com/osessiecq)).
+- [OrcaSlicer/OrcaSlicer#14987](https://github.com/OrcaSlicer/OrcaSlicer/pull/14987) + [#15544](https://github.com/OrcaSlicer/OrcaSlicer/pull/15544) — sequential-print collision check now finds a real valid print order (instead of trusting 3mf object-list order) and only counts the part of an object actually reaching above the gantry rod, not its whole footprint (by [@Kuzuri](https://github.com/Kuzuri)).
+- [OrcaSlicer/OrcaSlicer#14400](https://github.com/OrcaSlicer/OrcaSlicer/pull/14400) — per-toolhead nozzle-size picker plus one-click "Mixed Nozzle Sizes" line-width conversion for multi-toolhead printers (by [@ni4223](https://github.com/ni4223)).
 
 
 # Official links and community
