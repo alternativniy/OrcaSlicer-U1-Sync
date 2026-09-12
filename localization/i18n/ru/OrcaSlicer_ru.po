@@ -11092,6 +11092,33 @@ msgstr ""
 msgid "Nozzle diameter"
 msgstr "Диаметр сопла"
 
+msgid "Nozzles"
+msgstr "Сопла"
+
+#, c-format, boost-format
+msgid "Nozzle %d"
+msgstr "Сопло %d"
+
+msgid "Apply nozzle diameters"
+msgstr "Применить диаметры сопел"
+
+msgid "Mixed Nozzle Sizes"
+msgstr "Разные диаметры сопел"
+
+msgid ""
+"Convert line widths for different nozzle diameters? This allows the slicer "
+"to adjust them automatically for each toolhead."
+msgstr ""
+"Преобразовать ширину линий под разные диаметры сопел? Это позволит "
+"слайсеру автоматически подстраивать их для каждой печатающей головы."
+
+msgid ""
+"Yes - Convert line widths.\n"
+"No - Do not convert."
+msgstr ""
+"Да — преобразовать ширину линий.\n"
+"Нет — не преобразовывать."
+
 msgid "Wipe tower"
 msgstr "Черновая башня"
 
