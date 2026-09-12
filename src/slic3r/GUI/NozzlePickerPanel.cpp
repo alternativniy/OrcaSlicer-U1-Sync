@@ -1,6 +1,5 @@
 #include "NozzlePickerPanel.hpp"
 
-#include <iomanip>
 #include <sstream>
 
 #include <wx/sizer.h>
@@ -15,6 +14,7 @@
 #include "wxExtensions.hpp"
 #include "GUI_App.hpp"
 #include "I18N.hpp"
+#include "libslic3r/LocalesUtils.hpp"
 
 namespace Slic3r { namespace GUI {
 
@@ -32,26 +32,26 @@ static const int kElementSpacing = 5;
 // "0.4" / "0.4mm" -> 0.4 . Strict: after an optional trailing "mm" unit, the whole string must be a
 // single number. Composite/combined variants like "0.4+0.6" are rejected (return 0), not silently
 // truncated to their leading value. The "mm" suffix is accepted because the dropdowns display it.
+//
+// Must parse with a fixed decimal point regardless of the active UI language: plain std::stod/strtod
+// read the process-wide LC_NUMERIC, which the Russian (and other comma-decimal) translations switch to
+// a comma separator, making every "0.4"-style string here fail to parse (returns 0 for all nozzles).
+// string_to_double_decimal_point (fast_float) always expects '.', matching config/format_diameter output.
 static double parse_diameter(const wxString& value)
 {
-    try {
-        std::string s = value.ToStdString();
-        if (s.size() >= 2 && s.compare(s.size() - 2, 2, "mm") == 0)
-            s.erase(s.size() - 2);
-        size_t consumed = 0;
-        double d = std::stod(s, &consumed);
-        return consumed == s.size() ? d : 0.0;
-    } catch (...) {
-        return 0.0;
-    }
+    std::string s = value.ToStdString();
+    if (s.size() >= 2 && s.compare(s.size() - 2, 2, "mm") == 0)
+        s.erase(s.size() - 2);
+    size_t consumed = 0;
+    double d = Slic3r::string_to_double_decimal_point(s, &consumed);
+    return consumed == s.size() ? d : 0.0;
 }
 
-// Format a diameter as a trimmed "0.6mm" string for display in a dropdown.
+// Format a diameter as a trimmed "0.6mm" string for display in a dropdown. Always a '.' decimal point
+// (see parse_diameter) -- float_to_string_decimal_point is locale-independent, unlike ostringstream.
 static wxString format_diameter(double mm)
 {
-    std::ostringstream stream;
-    stream << std::fixed << std::setprecision(2) << mm;
-    std::string s = stream.str();
+    std::string s = Slic3r::float_to_string_decimal_point(mm, 2);
     if (s.find('.') != std::string::npos) {
         s.erase(s.find_last_not_of('0') + 1);
         if (s.back() == '.') s += '0';
