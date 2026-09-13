@@ -3863,6 +3863,19 @@ std::string Print::output_filename(const std::string &filename_base) const
     }
     config.set_key_value("filament_name", new ConfigOptionString(filament_name));
 
+    // "initial_no_support_extruder" isn't known until the G-code is generated (it needs the full
+    // per-layer tool ordering, computed deep in GCode::_do_export()), so placeholders() above has no
+    // entry for it -- unlike the other placeholders() keys, it can't get a generic "{key}" echo-string
+    // fallback either: templates use it as an array INDEX (e.g. Snapmaker U1's default filename_format,
+    // "{filament_type[initial_no_support_extruder]}"), and the placeholder parser requires a real
+    // integer there, throwing "Not a variable name" the moment such a template is evaluated before the
+    // G-code exists (e.g. for a Send-to-printer/Export preview filename). Approximate with the same
+    // first-used-extruder already resolved above for filament_name; finished() prints get the real value
+    // from PrintStatistics::config() instead.
+    if (!this->finished())
+        config.set_key_value("initial_no_support_extruder",
+            new ConfigOptionInt(extruders.empty() ? 0 : static_cast<int>(extruders.front())));
+
     return this->PrintBase::output_filename(m_config.filename_format.value, ".gcode", filename_base, &config);
 }
 
@@ -3961,6 +3974,7 @@ DynamicConfig PrintStatistics::config() const
     config.set_key_value("total_wipe_tower_filament", new ConfigOptionFloat(this->total_wipe_tower_filament));
     config.set_key_value("initial_tool",              new ConfigOptionInt(static_cast<int>(this->initial_tool)));
     config.set_key_value("initial_extruder",          new ConfigOptionInt(static_cast<int>(this->initial_tool)));
+    config.set_key_value("initial_no_support_extruder", new ConfigOptionInt(static_cast<int>(this->initial_no_support_tool)));
     return config;
 }
 

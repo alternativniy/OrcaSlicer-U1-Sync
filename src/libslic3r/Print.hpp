@@ -799,6 +799,11 @@ struct PrintStatistics
     double                          total_wipe_tower_cost;
     double                          total_wipe_tower_filament;
     unsigned int                    initial_tool;
+    // First extruder used for printing without support, mirrored from GCode's "initial_no_support_tool"
+    // placeholder (GCode.cpp) so filename_format templates that index by it (e.g. Snapmaker U1's default
+    // "{filament_type[initial_no_support_extruder]}") can resolve outside GCode's own placeholder parser
+    // context, via PrintStatistics::config()/placeholders() -- see Print::output_filename().
+    unsigned int                    initial_no_support_tool;
     std::map<size_t, double>        filament_stats;
 
     // Config with the filled in print statistics.
@@ -817,6 +822,7 @@ struct PrintStatistics
         total_wipe_tower_cost  = 0.;
         total_wipe_tower_filament = 0.;
         initial_tool           = 0;
+        initial_no_support_tool = 0;
         filament_stats.clear();
     }
     static const std::string FilamentUsedG;
