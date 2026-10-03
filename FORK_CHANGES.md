@@ -26,9 +26,9 @@ there is "live"; anything only on a topic branch below is **not yet in `release/
 | Branch | Base | Merged into `release/v2.4-u1`? | Carries |
 |---|---|---|---|
 | `fix/no-sparse-layers-toolchange` | `release/v2.4` (old) | Yes | Change #1, fix half |
-| `fix/no-sparse-layers-toolchange-main` | `main` | No (upstream PR copy, see watchlist) | Change #1, fix half, rebased onto `main` |
+| `fix/no-sparse-layers-toolchange-main` | `main` | No (upstream PR copy, see watchlist) | Change #1, fix half, rebased onto `main`; `main` merged in 2026-10-03 |
 | `feature/no-sparse-layers-protection` | `release/v2.4` (old) | Yes | Change #1, detection half |
-| `feature/no-sparse-layers-protection-main` | `main` | No (upstream PR copy, see watchlist) | Change #1, detection half, rebased onto `main` |
+| `feature/no-sparse-layers-protection-main` | `main` | No — upstream PR closed 2026-10-03, superseded by upstream #15485 | Change #1, detection half, rebased onto `main`; not updated, kept for reference only |
 | `fix/snapmaker-u1-sync` | `main` | Yes (same commits) | Change #2 |
 | `feature/retraction-toolchange` | `main` | Yes (same commits) | Changes #3, #4 |
 | `feature/snaporca-migrate-features` | `main` | Yes | Change #8 (M220 B/R) |
@@ -81,6 +81,17 @@ through already-printed parts.
 - **Later reverted on `release/v2.4-u1`** (see "Reverted, on purpose" below) — the final-purge half
   reintroduced the exact gantry-row collision risk it was meant to avoid, in a case the detector
   (change below) can't catch. The toolchange-travel fix itself was kept.
+- **`-main` copy vs upstream #15485** ("Port wipe tower BBS improvements", merged 2026-09-17):
+  upstream's Type1 `append_tcr()` now defers the descent to a compacted tower
+  (`defer_compacted_descend`) until the nozzle is over the tower, so `change_filament_gcode` already
+  runs at object Z in that case. Our restore/deretraction is still needed when the descent happens
+  *before* the toolchange: Type1 `is_finish_first`, and Type2 `append_tcr2()` (travels to the
+  tower, goes down, then toolchanges). When merging `main` into `fix/no-sparse-layers-toolchange-main`
+  (2026-10-03, `24f5469376`), `will_go_down` became `!is_approx(z, current_z) && !defer_compacted_descend`,
+  so we only lift around the macro when Z really went down. After our deretraction, upstream's later
+  `compacted_below_object` descent is a no-op (non-forced `travel_to_z` to the same Z). Verified:
+  full `fff_print_tests` 258/258 passed on the merged tree (built without GUI/CAD — the old
+  `deps/build` lacks `LibDataChannel`, `SLVS` and the FFmpeg `.so`s that `main` now needs).
 
 **`feature/no-sparse-layers-protection`** — detection + visualization, since nothing caught this
 placement risk before. Reuses existing `extruder_clearance_radius` / `extruder_clearance_height_to_rod`
@@ -109,6 +120,17 @@ settings; no new printer settings added.
   partway through a print (e.g. black-then-white-only for the rest), the tower freezes at its last
   real height regardless of the option, and this detector stays silent. The underlying G-code fix
   (change above) is unconditional and still protects the print; only the *warning* has this hole.
+- **Superseded upstream — `-main` PR closed 2026-10-03.** Upstream #15485 ported BambuStudio's
+  compacted-tower clearance rule: `Print::compacted_wipe_tower_clearance_valid()` (pre-slice, draws
+  keep-out rings and a height-limit plane) + `Print::validate_compacted_wipe_tower_clearance()`
+  (post-slice, against the real tower extrusions and the compacted tower Z). It covers both of our
+  checks more precisely: the radius check is tiered by object height (nozzle cone vs head body via
+  `nozzle_height`), the rod check adds `extruder_clearance_dist_to_rod` and
+  `extruder_clearance_height_to_lid`, and the spiral z-hop reach is included. Keeping both would give
+  two different errors for one layout, and our height-agnostic radius check would add false positives.
+  `feature/no-sparse-layers-protection-main` was left unmerged. The known gap above still exists
+  upstream (gated on `wipe_tower_sparse_layers_skipped()`, i.e. the option is still required).
+  **When `release/v2.4-u1` is rebased past #15485, drop our detection commits in favor of upstream's.**
 
 Verified against real repro G-code (Snapmaker U1) and a full local `ctest` run (only pre-existing,
 unrelated failures). Not verified: an actual physical print.
