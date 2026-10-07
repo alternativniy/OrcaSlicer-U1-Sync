@@ -2683,6 +2683,15 @@ void TabPrint::build()
         optgroup->append_single_option_line("preheat_time", "multimaterial_settings_ooze_prevention#preheat-time");
         optgroup->append_single_option_line("preheat_steps", "multimaterial_settings_ooze_prevention#preheat-steps");
 
+        optgroup = page->new_optgroup(L("Purge to bin"), L"param_flush");
+        optgroup->append_single_option_line("purge_to_bin");
+        optgroup->append_single_option_line("purge_bin_first_volume");
+        optgroup->append_single_option_line("purge_bin_speed_ratio");
+        optgroup->append_single_option_line("purge_bin_dwell");
+        optgroup->append_single_option_line("purge_bin_depart_retract");
+        optgroup->append_single_option_line("purge_bin_restart_trim");
+        optgroup->append_single_option_line("purge_bin_wait_temp");
+
         optgroup = page->new_optgroup(L("Flush options"), L"param_flush");
         optgroup->append_single_option_line("flush_into_infill", "multimaterial_settings_flush_options#flush-into-objects-infill");
         optgroup->append_single_option_line("flush_into_objects", "multimaterial_settings_flush_options");
@@ -4177,6 +4186,9 @@ void TabFilament::build()
         optgroup->append_single_option_line("long_retractions_when_ec", "material_multimaterial#multi-filament" , 0);
         optgroup->append_single_option_line("retraction_distances_when_ec", "material_multimaterial#multi-filament" , 0);
 
+        optgroup = page->new_optgroup(L("Purge to bin"), "param_flush");
+        optgroup->append_single_option_line("filament_purge_bin_volume");
+
         optgroup = page->new_optgroup(L("Tool change parameters with single extruder MM printers"), "param_toolchange");
         optgroup->append_single_option_line("filament_loading_speed_start", "material_multimaterial#loading-speed-at-the-start");
         optgroup->append_single_option_line("filament_loading_speed", "material_multimaterial#loading-speed");
@@ -4681,6 +4693,17 @@ void TabPrinter::build_fff()
         option.opt.height = gcode_field_height;//150;
         optgroup->append_single_option_line(option, "printer_machine_gcode#change-filament-g-code");
 
+        optgroup = page->new_optgroup(L("Purge to bin G-code"), L"param_gcode", 0);
+        optgroup->m_on_change = [this, &optgroup_title = optgroup->title](const t_config_option_key& opt_key, const boost::any& value) {
+            validate_custom_gcode_cb(this, optgroup_title, opt_key, value);
+        };
+        optgroup->edit_custom_gcode = edit_custom_gcode_fn;
+        option = optgroup->get_option("purge_bin_gcode");
+        option.opt.full_width = true;
+        option.opt.is_code = true;
+        option.opt.height = gcode_field_height;//150;
+        optgroup->append_single_option_line(option);
+
         optgroup = page->new_optgroup(L("Change extrusion role G-code"), L"param_gcode", 0);
         optgroup->m_on_change = [this, &optgroup_title = optgroup->title](const t_config_option_key &opt_key, const boost::any &value) {
             validate_custom_gcode_cb(this, optgroup_title, opt_key, value);
@@ -5067,6 +5090,7 @@ if (is_marlin_flavor)
         optgroup->append_single_option_line("machine_load_filament_time", "printer_multimaterial_advanced#filament-load-time");
         optgroup->append_single_option_line("machine_unload_filament_time", "printer_multimaterial_advanced#filament-unload-time");
         optgroup->append_single_option_line("machine_tool_change_time", "printer_multimaterial_advanced#tool-change-time");
+        optgroup->append_single_option_line("purge_bin_time");
         m_pages.insert(m_pages.end() - n_after_single_extruder_MM, page);
     }
 

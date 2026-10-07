@@ -50,7 +50,7 @@ public:
 
     OozePrevention() : enable(false) {}
     std::string pre_toolchange(GCode &gcodegen);
-    std::string post_toolchange(GCode &gcodegen);
+    std::string post_toolchange(GCode &gcodegen, bool wait = true);
 
 private:
     int _get_temp(const GCode &gcodegen) const;
@@ -254,6 +254,7 @@ public:
     std::string     retract(bool toolchange = false, bool is_last_retraction = false, LiftType lift_type = LiftType::NormalLift, bool apply_instantly = false, ExtrusionRole role = erNone);
     std::string     unretract() { return m_writer.unlift() + m_writer.unretract(); }
     std::string     set_extruder(unsigned int extruder_id, double print_z, bool by_object=false, int toolchange_temp_override = -1);
+    std::string     purge_to_bin(int old_filament_id, unsigned int new_filament_id, int new_filament_temp, double print_z, bool first_use);
     bool is_BBL_Printer();
     WipeTowerType wipe_tower_type();
 
@@ -651,6 +652,8 @@ private:
     coordf_t m_nominal_z;
     bool m_need_change_layer_lift_z = false;
     int m_start_gcode_filament = -1;
+    // Filaments already used in this print, for purge_bin_first_volume.
+    std::set<unsigned int> m_purge_bin_used_filaments;
     std::string m_filament_instances_code;
 
     std::set<unsigned int>                  m_initial_layer_extruders;

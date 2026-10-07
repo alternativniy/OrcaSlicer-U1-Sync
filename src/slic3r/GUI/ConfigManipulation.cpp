@@ -870,6 +870,15 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, co
     toggle_line("enable_tower_interface_cooldown_during_tower",
                 have_prime_tower && config->opt_bool("enable_tower_interface_features"));
 
+    // Without the printer's purge_bin_gcode the slicer has nothing to run at the bin.
+    bool can_purge_to_bin  = !have_prime_tower && !bSEMM &&
+                             !preset_bundle->printers.get_edited_preset().config.opt_string("purge_bin_gcode").empty();
+    toggle_field("purge_to_bin", can_purge_to_bin);
+    bool have_purge_to_bin = can_purge_to_bin && config->opt_bool("purge_to_bin");
+    for (auto el : {"purge_bin_first_volume", "purge_bin_speed_ratio", "purge_bin_dwell", "purge_bin_depart_retract",
+                    "purge_bin_restart_trim", "purge_bin_wait_temp"})
+        toggle_field(el, have_purge_to_bin);
+
     bool purge_in_primetower = preset_bundle->printers.get_edited_preset().config.opt_bool("purge_in_prime_tower");
 
     for (auto el : {"wipe_tower_rotation_angle", "wipe_tower_cone_angle",

@@ -109,6 +109,7 @@ const std::string GCodeProcessor::VFlush_End_Tag  = " VFLUSH_END";
 
 //Orca: External device purge tag
 const std::string GCodeProcessor::External_Purge_Tag = " EXTERNAL_PURGE";
+const std::string GCodeProcessor::Purge_Bin_Tag = " PURGE_BIN";
 
 const float GCodeProcessor::Wipe_Width = 0.05f;
 const float GCodeProcessor::Wipe_Height = 0.05f;
@@ -625,6 +626,7 @@ void GCodeProcessor::TimeProcessor::reset()
     filament_load_times = 0.0f;
     filament_unload_times = 0.0f;
     machine_tool_change_time = 0.0f;
+    purge_bin_time = 0.0f;
 
 
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
@@ -2104,6 +2106,7 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
     m_time_processor.filament_load_times = static_cast<float>(config.machine_load_filament_time.value);
     m_time_processor.filament_unload_times = static_cast<float>(config.machine_unload_filament_time.value);
     m_time_processor.machine_tool_change_time = static_cast<float>(config.machine_tool_change_time.value);
+    m_time_processor.purge_bin_time = static_cast<float>(config.purge_bin_time.value);
 
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         float max_acceleration = get_option_value(m_time_processor.machine_limits.machine_max_acceleration_extruding, i);
@@ -2356,6 +2359,10 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
     const ConfigOptionFloat* machine_tool_change_time = config.option<ConfigOptionFloat>("machine_tool_change_time");
     if (machine_tool_change_time != nullptr)
         m_time_processor.machine_tool_change_time = static_cast<float>(machine_tool_change_time->value);
+
+    const ConfigOptionFloat* purge_bin_time = config.option<ConfigOptionFloat>("purge_bin_time");
+    if (purge_bin_time != nullptr)
+        m_time_processor.purge_bin_time = static_cast<float>(purge_bin_time->value);
 
     if (m_flavor == gcfMarlinLegacy || m_flavor == gcfMarlinFirmware || m_flavor == gcfKlipper) {
         const ConfigOptionFloats* machine_max_acceleration_x = config.option<ConfigOptionFloats>("machine_max_acceleration_x");
@@ -3204,6 +3211,12 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
             float volume_extruded_filament = area_filament_cross_section * dE;
             m_used_filaments.update_flush_per_filament(filament_id, volume_extruded_filament);
         }
+        return;
+    }
+
+    // Orca: the printer macros of a purge to bin can't be estimated, take their time from the printer settings.
+    if (boost::starts_with(comment, GCodeProcessor::Purge_Bin_Tag)) {
+        simulate_st_synchronize(m_time_processor.purge_bin_time);
         return;
     }
 

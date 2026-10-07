@@ -193,6 +193,16 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "machine_start_gcode",
         "filament_start_gcode",
         "change_filament_gcode",
+        "purge_to_bin",
+        "purge_bin_first_volume",
+        "purge_bin_speed_ratio",
+        "purge_bin_dwell",
+        "purge_bin_depart_retract",
+        "purge_bin_restart_trim",
+        "purge_bin_wait_temp",
+        "filament_purge_bin_volume",
+        "purge_bin_gcode",
+        "purge_bin_time",
         "wipe",
         // BBS
         "wipe_distance",
@@ -1938,6 +1948,11 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
     if (!this->has_same_shrinkage_compensations()){
         warning->string = L("Filament shrinkage will not be used because filament shrinkage for the used filaments does not match.");
         warning->opt_key = "";
+    }
+    if (warning && m_config.purge_to_bin && !m_config.enable_prime_tower && !m_config.single_extruder_multi_material && extruders.size() > 1 &&
+        m_config.purge_bin_gcode.value.empty()) {
+        warning->string  = L("Purge to bin is enabled, but the printer's \"Purge to bin G-code\" is empty. No purge will be done.");
+        warning->opt_key = "purge_to_bin";
     }
     return {};
 }

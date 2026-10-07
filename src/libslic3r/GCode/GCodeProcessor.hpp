@@ -348,6 +348,8 @@ class Print;
         static const std::string VFlush_End_Tag;
         static const std::string External_Purge_Tag;
     public:
+        // Orca: one purge to bin, see GCode::purge_to_bin().
+        static const std::string Purge_Bin_Tag;
         enum class ETags : unsigned char
         {
             Role,
@@ -646,6 +648,8 @@ class Print;
             float filament_unload_times;
             //Orca:  time for tool change
             float machine_tool_change_time;
+            //Orca: time of the printer macros of one purge to bin
+            float purge_bin_time;
 
             std::array<TimeMachine, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> machines;
 
