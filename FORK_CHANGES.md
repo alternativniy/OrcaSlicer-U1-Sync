@@ -31,7 +31,7 @@ there is "live"; anything only on a topic branch below is **not yet in `release/
 | `feature/no-sparse-layers-protection-main` | `main` | No — upstream PR closed 2026-10-03, superseded by upstream #15485 | Change #1, detection half, rebased onto `main`; not updated, kept for reference only |
 | `fix/snapmaker-u1-sync` | `main` | Yes (same commits) | Change #2 |
 | `feature/retraction-toolchange` | `main` | Yes (same commits) | Changes #3, #4 |
-| `feature/snaporca-migrate-features` | `main` | Yes | Change #8 (M220 B/R) |
+| `feature/snaporca-migrate-features` | `main` | Yes | Changes #8 (M220 B/R), #14 (`tool_change_temprature_wait`) |
 | `upstream/15483-cap-bed-temps` | `release/v2.4-u1` | Yes | Change #9 (cherry-picked from PR #15483) |
 | `upstream/15349-u1-filename` | `release/v2.4-u1` | Yes | Change #10 (cherry-picked from PR #15349) |
 | `upstream/15482-filament-vendor` | `release/v2.4-u1` | Yes | Change #11 (cherry-picked from PR #15482) |
@@ -360,6 +360,33 @@ for you.
   compiled `NozzleAgnostic.cpp`, `NozzlePickerPanel.cpp`, `ConfigManipulation.cpp`, and `Plater.cpp`
   standalone (only pre-existing, unrelated warnings). Did not run the actual GUI.
 - Redundancy note: drop once #14400 lands upstream and we rebase past it.
+
+### 14. `tool_change_temprature_wait` — optional M109 after tool change
+
+`OozePrevention::post_toolchange()` always emitted `M109 S<temp> T<n>` after the change-filament
+G-code (whenever `standby_temperature_delta != 0`). On U1 without a prime tower our custom change
+G-code already waits for temperature (M109 before `T<n>` and at the purge bin), so Klipper's extra
+stabilization wait (±2 °C, slope <0.5 °C/s, checked once per second) parked the head ~0.5-1 s
+*after* the brush wipe — enough to ooze a drop onto the print. New printer option, `false` → `M104`
+(no wait) instead.
+- `src/libslic3r/PrintConfig.{hpp,cpp}` — `ConfigOptionBool tool_change_temprature_wait` in
+  `GCodeConfig`, next to `machine_tool_change_time`; default `true` (unchanged behavior, prime tower
+  mode unaffected).
+- `src/libslic3r/GCode.cpp` — `post_toolchange()` passes the option instead of hardcoded `true`.
+  Rest of `OozePrevention` (`pre_toolchange`, idle temperature, `;cooldown`) untouched.
+- `src/libslic3r/Preset.cpp` (printer option list), `src/slic3r/GUI/Tab.cpp` (Printer →
+  Multimaterial → Advanced), `src/libslic3r/Print.cpp` (`steps_gcode` — G-code export only, like
+  `standby_temperature_delta`).
+- Profiles: `"tool_change_temprature_wait": "0"` set in `fdm_U1.json` (all U1 nozzle variants);
+  the same key was already sitting, ignored, in `Snapmaker U1 (0.4 nozzle).json` — removed there
+  as a duplicate. `Snapmaker.json` bumped to `02.04.00.10`. **This is a fork-local profile delta** —
+  re-check it when syncing U1 profiles with upstream.
+- **Source:** ported from `Snapmaker/OrcaSlicer` (`main`), same key name **with their typo
+  (`temprature`) kept on purpose** so their profiles and 3MF projects load the setting as-is. Don't
+  "fix" the spelling.
+- Branch: `feature/snaporca-migrate-features`, commit `b643a03e00`, merged in `5dc1c02185`.
+- Verified: full RelWithDebInfo build OK; `ctest` — only the pre-existing
+  `Placeholder parser coFloatsOrPercents vector access` failure (see #13). Not checked on a real print yet.
 
 ## Not fork changes (verified, left alone)
 
