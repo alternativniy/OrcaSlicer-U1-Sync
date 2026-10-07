@@ -293,7 +293,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
     std::string OozePrevention::post_toolchange(GCode& gcodegen)
     {
         return (gcodegen.config().standby_temperature_delta.value != 0) ?
-            gcodegen.writer().set_temperature(this->_get_temp(gcodegen), true, gcodegen.writer().filament()->id()) :
+            gcodegen.writer().set_temperature(this->_get_temp(gcodegen), gcodegen.config().tool_change_temprature_wait.value, gcodegen.writer().filament()->id()) :
             std::string();
     }
 
