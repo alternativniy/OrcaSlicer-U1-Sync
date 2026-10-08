@@ -290,10 +290,10 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         return gcode;
     }
 
-    std::string OozePrevention::post_toolchange(GCode& gcodegen, bool wait)
+    std::string OozePrevention::post_toolchange(GCode& gcodegen)
     {
         return (gcodegen.config().standby_temperature_delta.value != 0) ?
-            gcodegen.writer().set_temperature(this->_get_temp(gcodegen), gcodegen.config().tool_change_temprature_wait.value && wait, gcodegen.writer().filament()->id()) :
+            gcodegen.writer().set_temperature(this->_get_temp(gcodegen), gcodegen.config().tool_change_temprature_wait.value, gcodegen.writer().filament()->id()) :
             std::string();
     }
 
@@ -7852,9 +7852,7 @@ std::string GCode::set_extruder(unsigned int new_filament_id, double print_z, bo
     }
     // Orca: purge to bin replaces the prime tower on tool changers. Only between two filaments of the print, not in the start G-code.
     const bool purge_bin_first_use = m_purge_bin_used_filaments.insert(new_filament_id).second;
-    // Not for single extruder MM: the retraction left by the purge is tracked per filament, not per shared extruder.
-    const bool do_purge_to_bin     = m_config.purge_to_bin && !m_config.enable_prime_tower && !m_config.single_extruder_multi_material &&
-                                     !m_config.purge_bin_gcode.value.empty() && old_filament_id >= 0 && m_layer_index >= 0;
+    const bool do_purge_to_bin     = purge_to_bin_enabled(m_config) && old_filament_id >= 0 && m_layer_index >= 0;
     float wipe_length = wipe_volume / filament_area;
     int new_filament_e_feedrate = (int)(60.0 * m_config.filament_max_volumetric_speed.get_at(new_filament_id) / filament_area);
     new_filament_e_feedrate = new_filament_e_feedrate == 0 ? 100 : new_filament_e_feedrate;
@@ -8046,10 +8044,8 @@ std::string GCode::set_extruder(unsigned int new_filament_id, double print_z, bo
         check_add_eol(gcode);
     }
     // Set the new extruder to the operating temperature.
-    // With purge to bin, purge_bin_wait_temp moves the wait to the bin, before wiping: waiting here as well would only
-    // add a second, useless wait. Without it the wait stays here, so the purge never starts on a cold nozzle.
     if (m_ooze_prevention.enable)
-        gcode += m_ooze_prevention.post_toolchange(*this, !(do_purge_to_bin && m_config.purge_bin_wait_temp));
+        gcode += m_ooze_prevention.post_toolchange(*this);
 
     if (m_config.enable_pressure_advance.get_at(new_filament_id)) {
         gcode += m_writer.set_pressure_advance(m_config.pressure_advance.get_at(new_filament_id));
@@ -8070,14 +8066,16 @@ std::string GCode::set_extruder(unsigned int new_filament_id, double print_z, bo
 
 // Orca: purge the newly picked tool into the printer's purge bin and wipe it, using the printer's purge_bin_gcode.
 // The slicer decides how much and how fast, the template does the printer-specific moves. The template must leave
-// the nozzle retracted by purge_bin_depart_retract and restore the positioning and extrusion modes.
+// the nozzle retracted by purge_bin_depart_retract.
 std::string GCode::purge_to_bin(int old_filament_id, unsigned int new_filament_id, int new_filament_temp, double print_z, bool first_use)
 {
     Extruder     *filament       = m_writer.filament();
     const double  area           = filament->filament_crossection();
-    const double  volume         = first_use ? m_config.purge_bin_first_volume.value : m_config.filament_purge_bin_volume.get_at(new_filament_id);
+    const double  volume         = (first_use ? m_config.filament_purge_bin_first_volume : m_config.filament_purge_bin_volume).get_at(new_filament_id);
     const double  retract        = m_config.retraction_length.get_at(new_filament_id);
-    const double  depart_retract = m_config.purge_bin_depart_retract.value;
+    // Printer values, with the filament overrides already applied per filament.
+    const double  depart_retract = m_config.purge_bin_depart_retract.get_at(new_filament_id);
+    const double  restart_extra  = m_config.purge_bin_restart_extra.get_at(new_filament_id);
     double        feedrate       = 60. * m_config.purge_bin_speed_ratio.value / 100. * m_config.filament_max_volumetric_speed.get_at(new_filament_id) / area;
     if (feedrate <= 0.)
         feedrate = 100.; // same fallback as new_filament_e_feedrate
@@ -8096,12 +8094,17 @@ std::string GCode::purge_to_bin(int old_filament_id, unsigned int new_filament_i
     config.set_key_value("purge_bin_feedrate", new ConfigOptionFloat(feedrate));
     config.set_key_value("purge_bin_retract", new ConfigOptionFloat(retract));
     config.set_key_value("purge_bin_wipe_retract", new ConfigOptionFloat(std::max(depart_retract - retract, 0.)));
-    config.set_key_value("purge_bin_dwell_ms", new ConfigOptionInt(int(std::lround(m_config.purge_bin_dwell.value * 1000.))));
+    config.set_key_value("purge_bin_dwell_ms", new ConfigOptionInt(int(std::lround(m_config.filament_purge_bin_dwell.get_at(new_filament_id) * 1000.))));
 
     std::string gcode = placeholder_parser_process("purge_bin_gcode", m_config.purge_bin_gcode.value, new_filament_id, &config);
     check_add_eol(gcode);
     // The template switches the part cooling fan for the pause: restore the fan speed of the print, as after change_filament_gcode.
     gcode += ";_FORCE_RESUME_FAN_SPEED\n";
+    // The template may leave relative positioning, another extrusion mode or feedrate (the G-code processor and the
+    // CoolingBuffer don't see RESTORE_GCODE_STATE): put the printer back into the state the writer expects.
+    gcode += "G90\n";
+    gcode += m_config.use_relative_e_distances ? "M83\n" : "M82\n";
+    gcode += m_writer.set_speed(m_writer.get_current_speed());
     m_writer.set_current_position_clear(false);
     double z_after_purge;
     if (GCodeProcessor::get_last_z_from_gcode(gcode, z_after_purge)) {
@@ -8109,14 +8112,15 @@ std::string GCode::purge_to_bin(int old_filament_id, unsigned int new_filament_i
         pos(2)    = z_after_purge;
         m_writer.set_position(pos);
     }
-    // For the G-code processor: the filament used by the purge (in the format of its EXTERNAL_PURGE tag, the refill only gives
-    // back what was retracted) and the time of the printer macros.
-    std::ostringstream tags;
-    tags.imbue(std::locale::classic());
-    tags << "; EXTERNAL_PURGE " << std::fixed << std::setprecision(6) << volume / area << "\n;" << GCodeProcessor::Purge_Bin_Tag << "\n";
-    gcode += tags.str();
-    // Deretract on the print a bit less than was retracted when leaving the bin, so the long deretraction doesn't leave a blob.
-    filament->set_retracted(std::max(depart_retract - m_config.purge_bin_restart_trim.value, 0.), 0.);
+    // For the G-code processor: the filament used by the purge, in the format of its EXTERNAL_PURGE tag. The refill only gives
+    // back what was retracted.
+    std::ostringstream tag;
+    tag.imbue(std::locale::classic());
+    tag << "; EXTERNAL_PURGE " << std::fixed << std::setprecision(6) << volume / area << "\n";
+    gcode += tag.str();
+    // The template left the nozzle retracted by depart_retract, the deretraction on the print gives back depart_retract + restart_extra.
+    // Folded into the retracted length: a restart extra of its own would be overwritten by the retraction before the travel.
+    filament->set_retracted(std::max(depart_retract + restart_extra, 0.), 0.);
     // The extruder position after the template is unknown with absolute E distances: count from zero again.
     gcode += m_writer.reset_e(true);
     return gcode;

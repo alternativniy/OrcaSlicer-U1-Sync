@@ -50,7 +50,7 @@ public:
 
     OozePrevention() : enable(false) {}
     std::string pre_toolchange(GCode &gcodegen);
-    std::string post_toolchange(GCode &gcodegen, bool wait = true);
+    std::string post_toolchange(GCode &gcodegen);
 
 private:
     int _get_temp(const GCode &gcodegen) const;
@@ -652,7 +652,7 @@ private:
     coordf_t m_nominal_z;
     bool m_need_change_layer_lift_z = false;
     int m_start_gcode_filament = -1;
-    // Filaments already used in this print, for purge_bin_first_volume.
+    // Filaments already used in this print, for filament_purge_bin_first_volume.
     std::set<unsigned int> m_purge_bin_used_filaments;
     std::string m_filament_instances_code;
 

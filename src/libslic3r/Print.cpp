@@ -195,15 +195,13 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "filament_start_gcode",
         "change_filament_gcode",
         "purge_to_bin",
-        "purge_bin_first_volume",
         "purge_bin_speed_ratio",
-        "purge_bin_dwell",
-        "purge_bin_depart_retract",
-        "purge_bin_restart_trim",
-        "purge_bin_wait_temp",
         "filament_purge_bin_volume",
+        "filament_purge_bin_first_volume",
+        "filament_purge_bin_dwell",
+        "purge_bin_depart_retract",
+        "purge_bin_restart_extra",
         "purge_bin_gcode",
-        "purge_bin_time",
         "wipe",
         // BBS
         "wipe_distance",
@@ -1950,10 +1948,14 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
         warning->string = L("Filament shrinkage will not be used because filament shrinkage for the used filaments does not match.");
         warning->opt_key = "";
     }
-    if (warning && m_config.purge_to_bin && !m_config.enable_prime_tower && !m_config.single_extruder_multi_material && extruders.size() > 1 &&
-        m_config.purge_bin_gcode.value.empty()) {
-        warning->string  = L("Purge to bin is enabled, but the printer's \"Purge to bin G-code\" is empty. No purge will be done.");
-        warning->opt_key = "purge_to_bin";
+    // Don't hide an earlier warning, there is room for one only.
+    if (warning && warning->string.empty() && m_config.purge_to_bin && !m_config.enable_prime_tower && extruders.size() > 1) {
+        if (m_config.use_firmware_retraction)
+            warning->string = L("Purge to bin is not supported with firmware retraction. No purge will be done.");
+        else if (m_config.purge_bin_gcode.value.empty())
+            warning->string = L("Purge to bin is enabled, but the printer's \"Purge to bin G-code\" is empty. No purge will be done.");
+        if (!warning->string.empty())
+            warning->opt_key = "purge_to_bin";
     }
     return {};
 }

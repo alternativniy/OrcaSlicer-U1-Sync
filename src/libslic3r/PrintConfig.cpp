@@ -80,7 +80,10 @@ const std::vector<std::string> filament_extruder_override_keys = {
     // percents
     "filament_retract_before_wipe",
     "filament_long_retractions_when_cut",
-    "filament_retraction_distances_when_cut"
+    "filament_retraction_distances_when_cut",
+    // purge to bin
+    "filament_purge_bin_depart_retract",
+    "filament_purge_bin_restart_extra"
 };
 
 size_t get_extruder_index(const GCodeConfig& config, unsigned int filament_id)
@@ -5459,6 +5462,23 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloats { 0. });
 
+    def = this->add("purge_bin_depart_retract", coFloats);
+    def->label = L("Retraction length (purge to bin)");
+    def->tooltip = L("Total retraction length when the nozzle leaves the purge bin after a purge to bin. "
+                     "Keeps the nozzle from oozing on the way back to the print.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats { 2. });
+
+    def = this->add("purge_bin_restart_extra", coFloats);
+    def->label = L("Extra length on restart (purge to bin)");
+    def->tooltip = L("Added to the deretraction on the print after leaving the purge bin. "
+                     "A negative value deretracts less than was retracted.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats { 0. });
+
     def = this->add("retraction_speed", coFloats);
     def->label = L("Retraction Speed");
     def->full_label = L("Retraction Speed");
@@ -6022,19 +6042,10 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Purge to bin");
     def->tooltip = L("Tool changers without a prime tower: after each tool change, run the printer's \"Purge to bin G-code\" "
                      "to purge the new tool into the purge bin and wipe it, right before moving back to the print. "
-                     "Unavailable with the prime tower, on single extruder multi-material printers "
+                     "Unavailable with the prime tower, on single extruder multi-material printers, with firmware retraction "
                      "and if the printer's \"Purge to bin G-code\" is empty.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
-
-    def = this->add("purge_bin_first_volume", coFloat);
-    def->label = L("First use volume");
-    def->tooltip = L("Purge volume when a filament is used for the first time in the print, instead of the filament's purge to bin volume. "
-                     "The filament the print starts with counts as already used.");
-    def->sidetext = L(u8"mm³");	// cubic millimeters, CIS languages need translation
-    def->min = 0;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(48.));
 
     def = this->add("purge_bin_speed_ratio", coPercent);
     def->label = L("Purge speed");
@@ -6045,39 +6056,6 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionPercent(60));
 
-    def = this->add("purge_bin_dwell", coFloat);
-    def->label = L("Cooling pause");
-    def->tooltip = L("Pause with the part cooling fan on after purging, so the purged blob hardens before it is cut off.");
-    def->sidetext = L("s");	// seconds, CIS languages need translation
-    def->min = 0;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(2.));
-
-    def = this->add("purge_bin_depart_retract", coFloat);
-    def->label = L("Retraction when leaving the bin");
-    def->tooltip = L("Total retraction length when the nozzle leaves the purge bin. "
-                     "A long retraction keeps the nozzle from oozing on the way back to the print.");
-    def->sidetext = L("mm");
-    def->min = 0;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(10.));
-
-    def = this->add("purge_bin_restart_trim", coFloat);
-    def->label = L("Reduce restart length");
-    def->tooltip = L("Deretract this much less on the print than was retracted when leaving the bin. "
-                     "Prevents a blob when the long retraction is restored.");
-    def->sidetext = L("mm");
-    def->min = 0;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(0.5));
-
-    def = this->add("purge_bin_wait_temp", coBool);
-    def->label = L("Wait for temperature at the bin");
-    def->tooltip = L("Wait for the nozzle temperature to stabilize at the purge bin, before wiping. "
-                     "When enabled, the usual temperature wait after the tool change is not emitted.");
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionBool(true));
-
     def = this->add("filament_purge_bin_volume", coFloats);
     def->label = L("Purge to bin volume");
     def->tooltip = L("Volume purged into the purge bin when this filament is used again after a tool change. "
@@ -6087,25 +6065,33 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloats { 20. });
 
+    def = this->add("filament_purge_bin_first_volume", coFloats);
+    def->label = L("First use volume");
+    def->tooltip = L("Volume purged into the purge bin when this filament is used for the first time in the print, "
+                     "instead of the purge to bin volume. The filament the print starts with counts as already used.");
+    def->sidetext = L(u8"mm³");	// cubic millimeters, CIS languages need translation
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats { 48. });
+
+    def = this->add("filament_purge_bin_dwell", coFloats);
+    def->label = L("Cooling pause");
+    def->tooltip = L("Pause with the part cooling fan on after purging, so the purged blob hardens before it is cut off.");
+    def->sidetext = L("s");	// seconds, CIS languages need translation
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats { 2. });
+
     def = this->add("purge_bin_gcode", coString);
     def->label = L("Purge to bin G-code");
     def->tooltip = L("Printer-specific moves of the \"Purge to bin\" process option: move to the purge bin, purge, wipe and leave. "
-                     "Inserted after the tool change is complete. Must leave the nozzle retracted by purge_bin_depart_retract "
-                     "and restore the positioning and extrusion modes.");
+                     "Inserted after the tool change is complete. Must leave the nozzle retracted by purge_bin_depart_retract. "
+                     "Absolute positioning, the extrusion mode and the feedrate are restored after it.");
     def->multiline = true;
     def->full_width = true;
     def->height = 5;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionString());
-
-    def = this->add("purge_bin_time", coFloat);
-    def->label = L("Purge to bin time");
-    def->tooltip = L("Extra time added to the print time estimate for each purge to the bin, "
-                     "for printer macros that cannot be estimated. For statistics only.");
-    def->sidetext = L("s");	// seconds, CIS languages need translation
-    def->min = 0;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(0.));
 
     def = this->add("single_extruder_multi_material_priming", coBool);
     def->label = L("Prime all printing extruders");
@@ -7432,12 +7418,15 @@ void PrintConfigDef::init_extruder_option_keys()
         "retraction_length", "z_hop", "z_hop_types", "travel_slope", "retract_lift_above", "retract_lift_below", "retract_lift_enforce", "retraction_speed", "deretraction_speed",
         "retract_before_wipe", "retract_restart_extra", "retraction_minimum_travel", "wipe", "wipe_distance",
         "retract_when_changing_layer", "retract_length_toolchange", "retract_restart_extra_toolchange", "extruder_colour",
-        "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut"
+        "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut",
+        "purge_bin_depart_retract", "purge_bin_restart_extra"
     };
 
     m_extruder_retract_keys = {
         "deretraction_speed",
         "long_retractions_when_cut",
+        "purge_bin_depart_retract",
+        "purge_bin_restart_extra",
         "retract_before_wipe",
         "retract_lift_above",
         "retract_lift_below",
@@ -7464,7 +7453,8 @@ void PrintConfigDef::init_filament_option_keys()
         "retraction_length", "z_hop", "z_hop_types", "retract_lift_above", "retract_lift_below", "retract_lift_enforce", "retraction_speed", "deretraction_speed",
         "retract_before_wipe", "retract_restart_extra", "retraction_minimum_travel", "wipe", "wipe_distance",
         "retract_when_changing_layer", "retract_length_toolchange", "retract_restart_extra_toolchange", "filament_colour",
-        "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut"/*,"filament_seam_gap"*/
+        "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut"/*,"filament_seam_gap"*/,
+        "purge_bin_depart_retract", "purge_bin_restart_extra"
     };
 
     m_filament_retract_keys = {
@@ -8474,6 +8464,8 @@ std::set<std::string> filament_options_with_variant = {
     //"filament_extruder_id",
     "filament_extruder_variant",
     "filament_retraction_length",
+    "filament_purge_bin_depart_retract",
+    "filament_purge_bin_restart_extra",
     "filament_z_hop",
     "filament_z_hop_types",
     "filament_retract_lift_above",
