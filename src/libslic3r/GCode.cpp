@@ -8099,7 +8099,9 @@ std::string GCode::purge_to_bin(int old_filament_id, unsigned int new_filament_i
     std::string gcode = placeholder_parser_process("purge_bin_gcode", m_config.purge_bin_gcode.value, new_filament_id, &config);
     check_add_eol(gcode);
     // The template switches the part cooling fan for the pause: restore the fan speed of the print, as after change_filament_gcode.
-    gcode += ";_FORCE_RESUME_FAN_SPEED\n";
+    // The template may do it itself, e.g. before leaving the bin, if the printer stops the motion on a fan command.
+    if (gcode.find(";_FORCE_RESUME_FAN_SPEED") == std::string::npos)
+        gcode += ";_FORCE_RESUME_FAN_SPEED\n";
     // The template may leave relative positioning, another extrusion mode or feedrate (the G-code processor and the
     // CoolingBuffer don't see RESTORE_GCODE_STATE): put the printer back into the state the writer expects.
     gcode += "G90\n";

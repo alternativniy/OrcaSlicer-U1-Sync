@@ -6086,7 +6086,9 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Purge to bin G-code");
     def->tooltip = L("Printer-specific moves of the \"Purge to bin\" process option: move to the purge bin, purge, wipe and leave. "
                      "Inserted after the tool change is complete. Must leave the nozzle retracted by purge_bin_depart_retract. "
-                     "Absolute positioning, the extrusion mode and the feedrate are restored after it.");
+                     "Absolute positioning, the extrusion mode and the feedrate are restored after it. "
+                     "The part cooling fan of the print is restored after it too, or where the template has a "
+                     "\";_FORCE_RESUME_FAN_SPEED\" line.");
     def->multiline = true;
     def->full_width = true;
     def->height = 5;

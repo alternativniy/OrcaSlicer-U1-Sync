@@ -240,6 +240,29 @@ TEST_CASE("Purge to bin retraction from the printer, overridden by the filament"
     CHECK(checked > 2);
 }
 
+TEST_CASE("Purge to bin restores the fan where the template asks for it", "[PurgeToBin]")
+{
+    DynamicPrintConfig config = two_filament_config(false);
+    enable_purge_to_bin(config);
+    config.set_deserialize_strict({
+        { "purge_bin_gcode", "M118 PURGE\nG1 E{purge_bin_refill + purge_bin_length} F{purge_bin_feedrate}\n"
+                             ";_FORCE_RESUME_FAN_SPEED\nM118 LEAVE\nG1 E-{purge_bin_retract + purge_bin_wipe_retract} F2400\n" },
+    });
+    const std::vector<std::string> lines = lines_of(slice_cube(config));
+
+    // The template restores the fan before leaving the bin: no fan command between leaving and the travel to the print.
+    size_t checked = 0;
+    for (size_t i = 0; i < lines.size(); ++i)
+        if (lines[i] == "M118 LEAVE") {
+            for (size_t j = i + 1; j < lines.size() && !boost::starts_with(lines[j], "G1 X"); ++j) {
+                CHECK_FALSE(boost::starts_with(lines[j], "M106"));
+                CHECK_FALSE(boost::starts_with(lines[j], "M107"));
+            }
+            ++checked;
+        }
+    CHECK(checked > 2);
+}
+
 TEST_CASE("Purge to bin with absolute extrusion distances", "[PurgeToBin]")
 {
     DynamicPrintConfig config = two_filament_config(false);
