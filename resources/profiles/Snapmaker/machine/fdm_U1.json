@@ -107,6 +107,20 @@
 		"0",
 		"0"
 	],
+	"purge_bin_depart_retract": [
+		"6",
+		"6",
+		"6",
+		"6",
+		"6"
+	],
+	"purge_bin_restart_extra": [
+		"-0.3",
+		"-0.3",
+		"-0.3",
+		"-0.3",
+		"-0.3"
+	],
 	"retract_when_changing_layer": [
 		"1",
 		"1",

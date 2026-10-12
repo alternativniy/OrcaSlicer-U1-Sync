@@ -4,6 +4,12 @@
 	"from": "system",
 	"filament_id": "297165629001",
 	"instantiation": "false",
+	"filament_purge_bin_depart_retract": [
+		"2"
+	],
+	"filament_purge_bin_restart_extra": [
+		"0"
+	],
 	"overhang_fan_threshold": [
 		"95%"
 	],
