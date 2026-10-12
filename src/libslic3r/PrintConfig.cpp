@@ -6066,7 +6066,7 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloats { 20. });
 
     def = this->add("filament_purge_bin_first_volume", coFloats);
-    def->label = L("First use volume");
+    def->label = L("First purge volume");
     def->tooltip = L("Volume purged into the purge bin when this filament is used for the first time in the print, "
                      "instead of the purge to bin volume. The filament the print starts with counts as already used.");
     def->sidetext = L(u8"mm³");	// cubic millimeters, CIS languages need translation

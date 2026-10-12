@@ -10780,8 +10780,8 @@ msgstr ""
 "экструдером для нескольких материалов, при прошивочном откате и если «G-код "
 "продувки в корзину» принтера пуст."
 
-msgid "First use volume"
-msgstr "Объём при первом использовании"
+msgid "First purge volume"
+msgstr "Объём первой продувки"
 
 msgid ""
 "Volume purged into the purge bin when this filament is used for the first "
