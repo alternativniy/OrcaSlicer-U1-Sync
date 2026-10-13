@@ -7,6 +7,12 @@
 		"2"
 	],
 	"instantiation": "false",
+	"filament_purge_bin_depart_retract": [
+		"2"
+	],
+	"filament_purge_bin_restart_extra": [
+		"0"
+	],
 	"filament_vendor": [
 		"Snapmaker"
 	],

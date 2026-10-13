@@ -1154,6 +1154,7 @@ static std::vector<std::string> s_Preset_print_options{
     "enable_tower_interface_features",
     "enable_tower_interface_cooldown_during_tower",
     "wipe_tower_no_sparse_layers",
+    "purge_to_bin", "purge_bin_speed_ratio",
     "compatible_printers",
     "compatible_printers_condition",
     "inherits",
@@ -1311,7 +1312,8 @@ static std::vector<std::string> s_Preset_filament_options {/*"filament_colour", 
     "filament_max_volumetric_speed", "filament_adaptive_volumetric_speed",
     "filament_flow_ratio", "filament_density", "filament_adhesiveness_category", "filament_cost", "filament_minimal_purge_on_wipe_tower",
     "filament_tower_interface_pre_extrusion_dist", "filament_tower_interface_pre_extrusion_length", "filament_tower_ironing_area", "filament_tower_interface_purge_volume",
-    "filament_tower_interface_print_temp",
+    "filament_tower_interface_print_temp", "filament_purge_bin_volume", "filament_purge_bin_first_volume",
+    "filament_purge_bin_dwell",
     "nozzle_temperature", "nozzle_temperature_initial_layer",
     // BBS
     "cool_plate_temp", "textured_cool_plate_temp", "eng_plate_temp", "hot_plate_temp", "textured_plate_temp", "cool_plate_temp_initial_layer", "textured_cool_plate_temp_initial_layer", "eng_plate_temp_initial_layer", "hot_plate_temp_initial_layer", "textured_plate_temp_initial_layer", "supertack_plate_temp_initial_layer", "supertack_plate_temp",
@@ -1327,6 +1329,8 @@ static std::vector<std::string> s_Preset_filament_options {/*"filament_colour", 
     "filament_retract_when_changing_layer", "filament_wipe", "filament_retract_before_wipe",
     // Toolchange retraction overrides
     "filament_retract_length_toolchange", "filament_retract_restart_extra_toolchange",
+    // Purge to bin retraction overrides
+    "filament_purge_bin_depart_retract", "filament_purge_bin_restart_extra",
     // Profile compatibility
     "filament_vendor", "compatible_prints", "compatible_prints_condition", "compatible_printers", "compatible_printers_condition", "inherits",
     //BBS
@@ -1365,7 +1369,7 @@ static std::vector<std::string> s_Preset_printer_options {
     "printer_technology",
     "printable_area", "extruder_printable_area", "support_parallel_printheads", "parallel_printheads_count", "parallel_printheads_bed_exclude_areas", "bed_exclude_area","bed_custom_texture", "bed_custom_model", "gcode_flavor",
     "fan_kickstart", "part_cooling_fan_min_pwm", "fan_speedup_time", "fan_speedup_overhangs",
-    "single_extruder_multi_material", "manual_filament_change", "file_start_gcode", "machine_start_gcode", "machine_end_gcode", "before_layer_change_gcode", "printing_by_object_gcode", "layer_change_gcode", "time_lapse_gcode", "wrapping_detection_gcode", "change_filament_gcode", "change_extrusion_role_gcode",
+    "single_extruder_multi_material", "manual_filament_change", "file_start_gcode", "machine_start_gcode", "machine_end_gcode", "before_layer_change_gcode", "printing_by_object_gcode", "layer_change_gcode", "time_lapse_gcode", "wrapping_detection_gcode", "change_filament_gcode", "change_extrusion_role_gcode", "purge_bin_gcode",
     "printer_model", "printer_variant", "printer_extruder_id", "printer_extruder_variant", "extruder_variant_list", "default_nozzle_volume_type",
     "printable_height", "extruder_printable_height", "extruder_clearance_radius", "extruder_clearance_height_to_lid", "extruder_clearance_height_to_rod",
     "nozzle_height", "master_extruder_id",

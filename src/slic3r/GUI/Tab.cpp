@@ -2683,6 +2683,10 @@ void TabPrint::build()
         optgroup->append_single_option_line("preheat_time", "multimaterial_settings_ooze_prevention#preheat-time");
         optgroup->append_single_option_line("preheat_steps", "multimaterial_settings_ooze_prevention#preheat-steps");
 
+        optgroup = page->new_optgroup(L("Purge to bin"), L"param_flush");
+        optgroup->append_single_option_line("purge_to_bin");
+        optgroup->append_single_option_line("purge_bin_speed_ratio");
+
         optgroup = page->new_optgroup(L("Flush options"), L"param_flush");
         optgroup->append_single_option_line("flush_into_infill", "multimaterial_settings_flush_options#flush-into-objects-infill");
         optgroup->append_single_option_line("flush_into_objects", "multimaterial_settings_flush_options");
@@ -3684,7 +3688,9 @@ void TabFilament::add_filament_overrides_page()
                                         //SoftFever
                                         // "filament_seam_gap"
                                         "filament_retract_length_toolchange",
-                                        "filament_retract_restart_extra_toolchange"
+                                        "filament_retract_restart_extra_toolchange",
+                                        "filament_purge_bin_depart_retract",
+                                        "filament_purge_bin_restart_extra"
                                      })
         append_retraction_option(opt_key, extruder_idx);
 
@@ -3812,7 +3818,9 @@ void TabFilament::update_filament_overrides_page(const DynamicPrintConfig* print
                                             //SoftFever
                                             // "filament_seam_gap"
                                             "filament_retract_length_toolchange",
-                                            "filament_retract_restart_extra_toolchange"
+                                            "filament_retract_restart_extra_toolchange",
+                                            "filament_purge_bin_depart_retract",
+                                            "filament_purge_bin_restart_extra"
                                         };
 
     const int selection = m_variant_combo ? m_variant_combo->GetSelection() : 0;
@@ -3829,7 +3837,9 @@ void TabFilament::update_filament_overrides_page(const DynamicPrintConfig* print
     for (const std::string& opt_key : opt_keys)
     {
         bool is_checked;
-        if (opt_key == "filament_retraction_length" || opt_key == "filament_retract_length_toolchange")
+        // Orca: the purge to bin retraction doesn't depend on the regular one.
+        if (opt_key == "filament_retraction_length" || opt_key == "filament_retract_length_toolchange" ||
+            opt_key.rfind("filament_purge_bin_", 0) == 0)
             is_checked = true;
         else if (opt_key == "filament_retract_restart_extra_toolchange")
             is_checked = have_toolchange_retract_length;
@@ -4194,6 +4204,11 @@ void TabFilament::build()
         // optgroup->append_single_option_line("filament_flush_volumetric_speed", "", 0);
         optgroup->append_single_option_line("long_retractions_when_ec", "material_multimaterial#multi-filament" , 0);
         optgroup->append_single_option_line("retraction_distances_when_ec", "material_multimaterial#multi-filament" , 0);
+
+        optgroup = page->new_optgroup(L("Purge to bin"), "param_flush");
+        optgroup->append_single_option_line("filament_purge_bin_volume");
+        optgroup->append_single_option_line("filament_purge_bin_first_volume");
+        optgroup->append_single_option_line("filament_purge_bin_dwell");
 
         optgroup = page->new_optgroup(L("Tool change parameters with single extruder MM printers"), "param_toolchange");
         optgroup->append_single_option_line("filament_loading_speed_start", "material_multimaterial#loading-speed-at-the-start");
@@ -4699,6 +4714,17 @@ void TabPrinter::build_fff()
         option.opt.height = gcode_field_height;//150;
         optgroup->append_single_option_line(option, "printer_machine_gcode#change-filament-g-code");
 
+        optgroup = page->new_optgroup(L("Purge to bin G-code"), L"param_gcode", 0);
+        optgroup->m_on_change = [this, &optgroup_title = optgroup->title](const t_config_option_key& opt_key, const boost::any& value) {
+            validate_custom_gcode_cb(this, optgroup_title, opt_key, value);
+        };
+        optgroup->edit_custom_gcode = edit_custom_gcode_fn;
+        option = optgroup->get_option("purge_bin_gcode");
+        option.opt.full_width = true;
+        option.opt.is_code = true;
+        option.opt.height = gcode_field_height;//150;
+        optgroup->append_single_option_line(option);
+
         optgroup = page->new_optgroup(L("Change extrusion role G-code"), L"param_gcode", 0);
         optgroup->m_on_change = [this, &optgroup_title = optgroup->title](const t_config_option_key &opt_key, const boost::any &value) {
             validate_custom_gcode_cb(this, optgroup_title, opt_key, value);
@@ -5179,6 +5205,10 @@ if (is_marlin_flavor)
             // do not display this params now
             optgroup->append_single_option_line("long_retractions_when_cut", "printer_extruder_retraction#long-retraction-when-cut-beta", extruder_idx);
             optgroup->append_single_option_line("retraction_distances_when_cut", "printer_extruder_retraction#long-retraction-when-cut-beta", extruder_idx);
+
+            optgroup = page->new_optgroup(L("Retraction when leaving the purge bin"), L"param_retraction_material_change");
+            optgroup->append_single_option_line("purge_bin_depart_retract", "", extruder_idx);
+            optgroup->append_single_option_line("purge_bin_restart_extra", "", extruder_idx);
 #if 0
             //optgroup = page->new_optgroup(L("Preview"), -1, true);
 
@@ -5612,6 +5642,9 @@ void TabPrinter::toggle_options()
 
         bool toolchange_retraction = m_config->opt_float("retract_length_toolchange", variant_index) > 0;
         toggle_option("retract_restart_extra_toolchange", have_multiple_extruders && toolchange_retraction, i);
+
+        toggle_option("purge_bin_depart_retract", have_multiple_extruders, i);
+        toggle_option("purge_bin_restart_extra", have_multiple_extruders, i);
 
         toggle_option("long_retractions_when_cut", !use_firmware_retraction && m_config->opt_int("enable_long_retraction_when_cut"), i);
         toggle_line("retraction_distances_when_cut", m_config->opt_bool("long_retractions_when_cut", variant_index), i);

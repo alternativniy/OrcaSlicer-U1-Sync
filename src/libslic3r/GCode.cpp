@@ -7895,6 +7895,9 @@ std::string GCode::set_extruder(unsigned int new_filament_id, double print_z, bo
         wipe_volume = 0.f;
         old_filament_e_feedrate = 200;
     }
+    // Orca: purge to bin replaces the prime tower on tool changers. Only between two filaments of the print, not in the start G-code.
+    const bool purge_bin_first_use = m_purge_bin_used_filaments.insert(new_filament_id).second;
+    const bool do_purge_to_bin     = purge_to_bin_enabled(m_config) && old_filament_id >= 0 && m_layer_index >= 0;
     float wipe_length = wipe_volume / filament_area;
     int new_filament_e_feedrate = (int)(60.0 * m_config.filament_max_volumetric_speed.get_at(new_filament_id) / filament_area);
     new_filament_e_feedrate = new_filament_e_feedrate == 0 ? 100 : new_filament_e_feedrate;
@@ -8095,9 +8098,78 @@ std::string GCode::set_extruder(unsigned int new_filament_id, double print_z, bo
         // Reset Adaptive PA processor last PA value
         m_pa_processor->resetPreviousPA(m_config.pressure_advance.get_at(new_filament_id));
     }
+
+    // Last step of the tool change: the wiped nozzle must leave for the print right away.
+    if (do_purge_to_bin)
+        gcode += this->purge_to_bin(old_filament_id, new_filament_id, new_filament_temp, print_z, purge_bin_first_use);
+
     //Orca: tool changer or IDEX's firmware may change Z position, so we set it to unknown/undefined
     m_last_pos_defined = false;
 
+    return gcode;
+}
+
+// Orca: purge the newly picked tool into the printer's purge bin and wipe it, using the printer's purge_bin_gcode.
+// The slicer decides how much and how fast, the template does the printer-specific moves. The template must leave
+// the nozzle retracted by purge_bin_depart_retract.
+std::string GCode::purge_to_bin(int old_filament_id, unsigned int new_filament_id, int new_filament_temp, double print_z, bool first_use)
+{
+    Extruder     *filament       = m_writer.filament();
+    const double  area           = filament->filament_crossection();
+    const double  volume         = (first_use ? m_config.filament_purge_bin_first_volume : m_config.filament_purge_bin_volume).get_at(new_filament_id);
+    const double  retract        = m_config.retraction_length.get_at(new_filament_id);
+    // Printer values, with the filament overrides already applied per filament.
+    const double  depart_retract = m_config.purge_bin_depart_retract.get_at(new_filament_id);
+    const double  restart_extra  = m_config.purge_bin_restart_extra.get_at(new_filament_id);
+    double        feedrate       = 60. * m_config.purge_bin_speed_ratio.value / 100. * m_config.filament_max_volumetric_speed.get_at(new_filament_id) / area;
+    if (feedrate <= 0.)
+        feedrate = 100.; // same fallback as new_filament_e_feedrate
+
+    DynamicConfig config;
+    config.set_key_value("layer_num", new ConfigOptionInt(m_layer_index));
+    config.set_key_value("layer_z", new ConfigOptionFloat(print_z));
+    config.set_key_value("previous_extruder", new ConfigOptionInt(old_filament_id));
+    config.set_key_value("next_extruder", new ConfigOptionInt(int(new_filament_id)));
+    config.set_key_value("new_filament_temp", new ConfigOptionInt(new_filament_temp));
+    config.set_key_value("purge_bin_first_use", new ConfigOptionBool(first_use));
+    // What Orca itself would push back when deretracting this tool, i.e. the retraction left when it was put away.
+    config.set_key_value("purge_bin_refill", new ConfigOptionFloat(filament->retracted() + filament->restart_extra()));
+    config.set_key_value("purge_bin_volume", new ConfigOptionFloat(volume));
+    config.set_key_value("purge_bin_length", new ConfigOptionFloat(volume / area));
+    config.set_key_value("purge_bin_feedrate", new ConfigOptionFloat(feedrate));
+    config.set_key_value("purge_bin_retract", new ConfigOptionFloat(retract));
+    config.set_key_value("purge_bin_wipe_retract", new ConfigOptionFloat(std::max(depart_retract - retract, 0.)));
+    config.set_key_value("purge_bin_dwell_ms", new ConfigOptionInt(int(std::lround(m_config.filament_purge_bin_dwell.get_at(new_filament_id) * 1000.))));
+
+    std::string gcode = placeholder_parser_process("purge_bin_gcode", m_config.purge_bin_gcode.value, new_filament_id, &config);
+    check_add_eol(gcode);
+    // The template switches the part cooling fan for the pause: restore the fan speed of the print, as after change_filament_gcode.
+    // The template may do it itself, e.g. before leaving the bin, if the printer stops the motion on a fan command.
+    if (gcode.find(";_FORCE_RESUME_FAN_SPEED") == std::string::npos)
+        gcode += ";_FORCE_RESUME_FAN_SPEED\n";
+    // The template may leave relative positioning, another extrusion mode or feedrate (the G-code processor and the
+    // CoolingBuffer don't see RESTORE_GCODE_STATE): put the printer back into the state the writer expects.
+    gcode += "G90\n";
+    gcode += m_config.use_relative_e_distances ? "M83\n" : "M82\n";
+    gcode += m_writer.set_speed(m_writer.get_current_speed());
+    m_writer.set_current_position_clear(false);
+    double z_after_purge;
+    if (GCodeProcessor::get_last_z_from_gcode(gcode, z_after_purge)) {
+        Vec3d pos = m_writer.get_position();
+        pos(2)    = z_after_purge;
+        m_writer.set_position(pos);
+    }
+    // For the G-code processor: the filament used by the purge, in the format of its EXTERNAL_PURGE tag. The refill only gives
+    // back what was retracted.
+    std::ostringstream tag;
+    tag.imbue(std::locale::classic());
+    tag << "; EXTERNAL_PURGE " << std::fixed << std::setprecision(6) << volume / area << "\n";
+    gcode += tag.str();
+    // The template left the nozzle retracted by depart_retract, the deretraction on the print gives back depart_retract + restart_extra.
+    // Folded into the retracted length: a restart extra of its own would be overwritten by the retraction before the travel.
+    filament->set_retracted(std::max(depart_retract + restart_extra, 0.), 0.);
+    // The extruder position after the template is unknown with absolute E distances: count from zero again.
+    gcode += m_writer.reset_e(true);
     return gcode;
 }
 
