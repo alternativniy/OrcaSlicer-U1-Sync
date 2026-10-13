@@ -37,6 +37,7 @@ there is "live"; anything only on a topic branch below is **not yet in `release/
 | `upstream/15482-filament-vendor` | `release/v2.4-u1` | Yes | Change #11 (cherry-picked from PR #15482) |
 | `upstream/14987-15544-sequential-collision` | `release/v2.4-u1` | Yes | Change #12 (cherry-picked from PR #14987+#15544) |
 | `upstream/14400-nozzle-picker` | `release/v2.4-u1` | Yes | Change #13 (cherry-picked from PR #14400) |
+| `feature/purge-to-bin` | `release/v2.4` | Yes | Change #15; carries a `cherry-pick -x` of #14 (`b643a03e00` → `8f3f137c17`) it depends on |
 
 The `-main` branches exist because the no-sparse-layers work started life on `release/v2.4` and had
 to be rebased onto `main` to open upstream PRs (drifted too far to apply cleanly otherwise); they're
@@ -385,8 +386,84 @@ stabilization wait (±2 °C, slope <0.5 °C/s, checked once per second) parked t
   (`temprature`) kept on purpose** so their profiles and 3MF projects load the setting as-is. Don't
   "fix" the spelling.
 - Branch: `feature/snaporca-migrate-features`, commit `b643a03e00`, merged in `5dc1c02185`.
+- Also cherry-picked (`-x`) onto `feature/purge-to-bin` as `8f3f137c17`, since #15 relies on it
+  instead of an option of its own. Both copies are the same change — when rebasing, keep one.
 - Verified: full RelWithDebInfo build OK; `ctest` — only the pre-existing
   `Placeholder parser coFloatsOrPercents vector access` failure (see #13). Not checked on a real print yet.
+
+### 15. Purge to bin — tool changer purge into the printer's purge bin instead of a prime tower
+
+U1 printing several materials without a prime tower (the tower gets huge when every layer has a tool
+change): after each tool change, purge the new tool into its purge bin, wipe it on the brush and go
+straight back to the print. Replaces a custom `change_filament_gcode` block, which had two problems
+the slicer can solve: Orca's own `M109`/`SET_PRESSURE_ADVANCE` came *after* the block (the wiped
+nozzle waited and oozed), and the retraction state had to be faked through `e_retracted[]`.
+
+**Split:** the slicer decides how much and how fast, a printer template does the moves.
+- Process (Multimaterial → Purge to bin): `purge_to_bin` (off by default), `purge_bin_speed_ratio`
+  (% of the filament's max volumetric speed, 60).
+- Filament (Multimaterial → Purge to bin): `filament_purge_bin_volume` (20 mm³),
+  `filament_purge_bin_first_volume` (48 mm³, first use of a filament in the print; the first filament
+  counts as used), `filament_purge_bin_dwell` (cooling pause, 2 s).
+- Printer → Extruder → "Retraction when leaving the purge bin": `purge_bin_depart_retract` (2 mm),
+  `purge_bin_restart_extra` (0), with filament overrides `filament_purge_bin_*` on the "Setting
+  Overrides" page — the regular `filament_extruder_override_keys` / `extruder_retract_keys` mechanism,
+  no custom GUI. **Not tied to the tool change retraction**, so the prime tower is unaffected.
+- Printer → Machine G-code: `purge_bin_gcode` (empty = feature off; the process checkbox is disabled
+  then, `Print::validate()` warns if it is set anyway).
+
+**Code:** `GCode::set_extruder()` runs `GCode::purge_to_bin()` as the very last step of a tool change
+(after the filament start G-code, `post_toolchange()` and PA). Active only with
+`purge_to_bin_enabled()` (no prime tower, no single extruder MM, no firmware retraction, template set)
+and between two filaments of the print (`m_layer_index >= 0`). Placeholders: `purge_bin_first_use`,
+`purge_bin_refill` (= `retracted()` + restart extra of the new tool), `purge_bin_volume/length/feedrate`,
+`purge_bin_retract`, `purge_bin_wipe_retract` (= depart − regular), `purge_bin_dwell_ms`,
+`new_filament_temp`, `previous/next_extruder`, `layer_num/z`. After the template: part fan restored
+(`;_FORCE_RESUME_FAN_SPEED`, unless the template has one), `G90` + `M82`/`M83` + the writer's
+feedrate (the G-code processor and CoolingBuffer don't see `RESTORE_GCODE_STATE`), `; EXTERNAL_PURGE`
+(existing tag, filament usage), retraction set to `depart + restart_extra`, `reset_e`.
+- `src/libslic3r/GCode.{hpp,cpp}`, `PrintConfig.{hpp,cpp}` (defs, placeholders), `Preset.cpp`,
+  `Print.cpp` (G-code export only), `src/slic3r/GUI/Tab.cpp`, `ConfigManipulation.cpp`,
+  `localization/i18n/ru/OrcaSlicer_ru.po` (hand-inserted msgids, as in #13).
+- Tests: `tests/fff_print/test_purge_to_bin.cpp`, 7 cases. They compare the commands of each tool
+  change, not the whole G-code: two slicings of the same model don't always give the same paths, fan
+  speeds and progress (seen run to run, unrelated to this change). Also: test configs default to
+  single extruder MM and `Print::m_isBBLPrinter` is not initialized — both set explicitly.
+
+**U1 profiles (fork-local profile delta, re-check on upstream profile syncs):**
+- `fdm_U1.json`: `purge_bin_gcode` template; `purge_bin_depart_retract` 6 / `purge_bin_restart_extra`
+  −0.3 (5 mm still left a blob, 10 mm was cleaner but is a lot for some filaments).
+- Snapmaker `fdm_filament_tpu.json`, `Snapmaker TPU 95A @U1 base.json`: 2 / 0 through the filament
+  override.
+- `Snapmaker U1 (0.4 nozzle).json` change G-code: with purge to bin active, no `M109` for the new tool
+  before `T` (the old tool waited over the print) and no `SM_PRINT_PREEXTRUDE_FILAMENT` (the first use
+  purge replaces it). Unchanged without purge to bin. Only the 0.4 variant has a change G-code at all.
+- `Snapmaker.json` → `02.04.00.14` (the branch went up to `.13`, `release/v2.4-u1` was at `.10`).
+
+**Template, as tested** (black/white PETG, much cleaner seams than every earlier variant):
+`M109` at the bin before purging (nothing else waits for the temperature now); `M400` after the
+cooling pause (U1 firmware sets fans when the command is read, not in the motion queue — without it
+`M107` cut the fan right away, same as Snapmaker's own `INNER_PREEXTRUDE_FILAMENT`); **the whole
+retraction before the temperature wait and the brush**, leaving the bin without extruding. With only
+the regular retraction during the wipe, the nozzle kept oozing after the brush and the drop landed on
+the seam. U1 firmware notes from `/home/alternativ/Test/config/lava`: `RESTORE_GCODE_STATE` also
+restores fan speeds; `M106` doesn't stop the motion.
+
+**Decided against** (don't re-add without a reason): a time-based purge volume instead of first/regular
+use (U1 idle tools sit 150 °C colder, so idle time hardly matters; the slicer doesn't know times when
+it generates G-code); a separate wait-temperature option (that's #14); a purge time estimate option
+(not worth it); tying the depart retraction to the tool change retraction (would change the tower).
+
+- Branch: `feature/purge-to-bin` (base `release/v2.4`), merged in `88387982e5`. Conflicts: next to
+  #3's toolchange override keys (kept both) and `Snapmaker.json` version.
+- Verified: full RelWithDebInfo build of the merged tree, `ctest` 210/212: the pre-existing
+  `Placeholder parser coFloatsOrPercents vector access` failure (see #13), and #1's
+  `Wipe tower collision detection ignores a tall object in a different row`, which fails at random:
+  the "G92 E0 in layer_gcode" check in `Print::validate()` depends on `is_BBL_printer()`, and
+  `Print::m_isBBLPrinter` is never initialized (upstream bug; the #1 tests don't set it). Not caused by
+  this merge. Tool change sequence checked on real U1 profile values; printed on U1 with PETG. Not
+  tested on other printers or PLA/ABS yet.
+- Our own feature, no upstream PR.
 
 ## Not fork changes (verified, left alone)
 
