@@ -11555,7 +11555,7 @@ CustomGcodeSpecificConfigDef::CustomGcodeSpecificConfigDef()
     new_def("purge_bin_length", coFloat, "Purge length", "Filament length to purge, in mm.");
     new_def("purge_bin_feedrate", coFloat, "Purge feedrate", "Extruder feedrate for purging, in mm/min.");
     new_def("purge_bin_retract", coFloat, "Retraction length", "Regular retraction length of the new filament.");
-    new_def("purge_bin_wipe_retract", coFloat, "Retraction when leaving", "Additional retraction when leaving the bin: purge_bin_depart_retract minus purge_bin_retract, not less than zero.");
+    new_def("purge_bin_wipe_retract", coFloat, "Rest of the retraction", "The rest of the retraction after purge_bin_retract, before waiting and wiping: purge_bin_depart_retract minus purge_bin_retract, not less than zero.");
     new_def("purge_bin_dwell_ms", coInt, "Cooling pause", "Cooling pause after purging, in milliseconds.");
 
 // change_extrusion_role_gcode
